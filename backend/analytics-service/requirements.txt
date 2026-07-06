@@ -1,0 +1,39 @@
+# CodeLens — analytics-service (Python + FastAPI) dependencies
+# Pin exact versions before committing for reproducible builds.
+
+# --- Web framework ---
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# --- Data processing ---
+pandas
+numpy
+
+# --- Machine learning ---
+scikit-learn
+xgboost
+joblib
+
+# --- Persistence ---
+sqlalchemy
+psycopg2-binary
+alembic
+
+# --- Messaging (RabbitMQ) ---
+pika
+
+# --- Caching / rate limiting ---
+redis
+
+# --- Config / utilities ---
+python-dotenv
+httpx
+
+# --- Observability ---
+prometheus-client
+
+# --- Testing ---
+pytest
+pytest-asyncio
