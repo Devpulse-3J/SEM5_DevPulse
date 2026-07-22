@@ -14,12 +14,13 @@
 6. [Services in Detail](#services-in-detail)
 7. [Data Flow Diagrams](#data-flow-diagrams)
 8. [User Roles](#user-roles)
-9. [Getting Started](#getting-started)
-10. [Environment Variables](#environment-variables)
-11. [Development Workflow](#development-workflow)
-12. [API Documentation](#api-documentation)
-13. [Contributing](#contributing)
-14. [License and Authors](#license-and-authors)
+9. [Setup Guide — From Clone to First Commit](#setup-guide--from-clone-to-first-commit)
+10. [Getting Started](#getting-started)
+11. [Environment Variables](#environment-variables)
+12. [Development Workflow](#development-workflow)
+13. [API Documentation](#api-documentation)
+14. [Contributing](#contributing)
+15. [License and Authors](#license-and-authors)
 
 ---
 
@@ -46,7 +47,7 @@ A first-time reader should think of DevPulse as an **event-driven data pipeline 
 - **Predictive analytics** — ML models (Random Forest, Logistic Regression, XGBoost) score pull requests for staleness and merge risk.
 - **Configurable alerts** — rule-based notifications delivered to Slack, email, or arbitrary custom webhooks.
 - **Multi-tenancy** — every organisation's data is isolated; no cross-tenant leakage across metrics, analytics, or alerts.
-- **Role-based access control (RBAC)** — four roles (Admin, Manager, Developer, Viewer) with scoped permissions enforced at the gateway and service layers.
+- **Role-based access control (RBAC)** — three roles (Admin, Manager, Developer), with Manager and Developer granted **per project** rather than per user, enforced at the gateway and service layers.
 - **Interactive dashboards** — DORA trends, developer workload, and Developer Experience scores rendered as charts.
 - **Independently deployable services** — each backend service is containerised and owns its own database schema.
 
@@ -163,14 +164,14 @@ The following diagram shows how a single GitHub webhook (e.g. "pull request open
 ```
 devpulse/
 ├── frontend/
-│   ├── dashboard-app/          # Next.js dashboard for Manager, Developer, Viewer
+│   ├── dashboard-app/          # Next.js dashboard for Managers and Developers
 │   ├── admin-app/              # Next.js admin console for org/tenant management
 │   ├── shared-ui/              # shared component library used by both apps
 │   └── shared-types/           # TypeScript types matching backend DTOs
 │
 ├── backend/
 │   ├── api-gateway/            # Spring Cloud Gateway — single entry point, routing, auth
-│   ├── auth-service/           # users, orgs, JWT issuance, RBAC, multi-tenancy setup
+│   ├── auth-service/           # users, companies, projects, memberships, JWT issuance, RBAC
 │   ├── integration-service/    # GitHub & Jira webhook ingestion, event normalisation
 │   ├── metrics-service/        # stores PRs/commits/deployments, exposes DORA metrics
 │   ├── analytics-service/      # Python + FastAPI, ML predictions for stale/high-risk PRs
@@ -191,12 +192,12 @@ devpulse/
 
 | Path | Purpose |
 |---|---|
-| `frontend/dashboard-app/` | Next.js app serving DORA dashboards and activity views for Managers, Developers, and Viewers |
+| `frontend/dashboard-app/` | Next.js app serving DORA dashboards and activity views, scoped to the projects the signed-in user belongs to |
 | `frontend/admin-app/` | Next.js admin console for organisation creation, member invites, and integration management |
 | `frontend/shared-ui/` | Reusable React component library (charts, tables, layout) shared by both frontend apps |
 | `frontend/shared-types/` | TypeScript type definitions mirroring backend DTOs to keep the API contract type-safe |
 | `backend/api-gateway/` | Spring Cloud Gateway; the only publicly exposed service — routes, authenticates, and rate-limits |
-| `backend/auth-service/` | Owns users, organisations, sessions; issues and validates JWTs; sets up multi-tenancy and RBAC |
+| `backend/auth-service/` | Owns users, companies, projects, project memberships, and sessions; issues and validates JWTs; sets up multi-tenancy and per-project RBAC |
 | `backend/integration-service/` | Receives GitHub and Jira webhooks, validates signatures, normalises them into internal events |
 | `backend/metrics-service/` | Persists PRs, commits, and deployments; computes and exposes DORA metrics |
 | `backend/analytics-service/` | Python/FastAPI service running ML models to score PRs for staleness and risk |
@@ -243,11 +244,11 @@ The **analytics-service** (Python) uses a FastAPI-idiomatic layout instead: `app
 
 ### auth-service
 
-- **Purpose:** Identity, organisations, and access control.
-- **Responsibilities:** Register and authenticate users; issue and refresh JWTs; manage organisations, invitations, and member roles; establish multi-tenant boundaries and RBAC policies.
-- **Exposed endpoints (high-level):** `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /orgs`, `POST /orgs/{id}/invitations`, `GET /users/me`.
-- **Owned database:** `auth` schema — users, organisations, roles, invitations, refresh tokens.
-- **Depends on:** PostgreSQL, Redis (session/token blacklist). Publishes `org.created` and `user.invited` events.
+- **Purpose:** Identity, companies, projects, and access control.
+- **Responsibilities:** Register and authenticate users; issue and refresh JWTs; manage companies, projects, invitations, and project memberships; resolve a user's role for a given project; establish multi-tenant boundaries and RBAC policies.
+- **Exposed endpoints (high-level):** `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /users/me`, `GET /orgs`, `POST /orgs/{id}/invitations`, `GET /projects` (those visible to the caller), `POST /projects` and `DELETE /projects/{id}` (Admin only), `GET /projects/{id}/members`, `PUT /projects/{id}/members/{userId}/role` (Admin only — grants Manager or Developer).
+- **Owned database:** `auth` schema — users, companies, projects, project memberships (the `(user, project) → role` table), invitations, refresh tokens.
+- **Depends on:** PostgreSQL, Redis (session/token blacklist). Publishes `org.created`, `project.created`, and `user.invited` events.
 
 ### integration-service
 
@@ -294,7 +295,7 @@ The **analytics-service** (Python) uses a FastAPI-idiomatic layout instead: `app
 
 ### frontend/dashboard-app
 
-- **Purpose:** The primary analytics UI for Managers, Developers, and Viewers.
+- **Purpose:** The primary analytics UI for Managers and Developers, scoped to a selected project.
 - **Responsibilities:** Render DORA trend charts, developer workload, PR/review activity, and Developer Experience scores; poll `metrics-service` and `analytics-service` through the gateway; surface received alerts.
 - **Depends on:** `api-gateway` (all data), `shared-ui`, `shared-types`, NextAuth.js sessions.
 
@@ -339,7 +340,8 @@ Browser (login form)
       │                     │ issue signed JWT (+ refresh token)
       │◀────────────────────┘
       │  200 OK  { accessToken, refreshToken }
-      ▼
+      ▼haring
+
 Browser stores session (NextAuth.js)
       │
       │  subsequent request: GET /api/metrics/dora
@@ -378,12 +380,179 @@ analytics-service
 
 ## User Roles
 
-| Role | Capabilities |
+DevPulse has **three roles**. The critical rule is that **Manager and Developer are not
+properties of a user — they are properties of a membership**. A role is granted per project,
+so the same person can own one project as its Manager while contributing code to another as a
+Developer. A Manager writes code too; owning a project adds responsibility, it does not
+replace the day job.
+
+```
+Company (tenant)
+  ├── Admin ......................... company-scoped role, held by the user directly
+  └── Project A          Project B
+        │                   │
+        └── Sara: Manager   └── Sara: Developer     ← same user, different role per project
+            Ravi: Developer     Ravi: Manager
+```
+
+| Role | Scope | Capabilities |
+|---|---|---|
+| **Admin** | Company | Creates and deletes projects; grants and revokes the Manager role on a project; invites and removes company members; connects/disconnects GitHub and Jira integrations; manages company settings; can view every project in the company |
+| **Manager** | Per project they own | Everything a Developer can do on that project, **plus**: manages the project's team and settings, configures its alert rules and channels, and views project-wide DORA dashboards, developer workload, and Developer Experience scores |
+| **Developer** | Per project they belong to | Writes the code being measured; views their own and the project's activity; tracks their own PRs and reviews; receives relevant alerts; reads the project's dashboards |
+
+**Enforcement rules:**
+
+- Only an **Admin** may create or delete a project, or grant the Manager role. A Manager
+  cannot promote another user or create a project.
+- A **Manager**'s authority is bounded by the specific project they own. Owning Project A
+  grants no elevated access to Project B — if they are a Developer there, they are treated
+  purely as a Developer there.
+- A **Developer** sees only projects they are a member of.
+- No role may see across companies — tenant isolation is absolute, enforced at the gateway
+  and again in each service.
+
+**Implementation consequence:** permission checks are always evaluated as
+`(user, project) → role`, never `user → role`. A JWT therefore cannot carry one global role
+claim; it carries the user's identity, their company, and their company-level flag (admin or
+member), while the per-project role is resolved from the membership table on each request.
+`auth-service` owns that table.
+
+---
+
+## Setup Guide — From Clone to First Commit
+
+> **Current repository state:** this repo is a **directory skeleton**. Every service folder
+> exists with its internal layout, but there are no build files, no entrypoint classes, and
+> no Docker configuration yet. Phase 0 below must be completed once, by one person, before
+> anyone else can compile or run anything. Until then, the commands in
+> [Getting Started](#getting-started) will not work.
+
+### Step 0 — Install prerequisites
+
+| Tool | Version | Needed for |
+|---|---|---|
+| JDK | 17+ | All Java services and Maven builds |
+| Node.js | 20+ | Both Next.js frontends |
+| Python | 3.11+ | analytics-service |
+| Docker Desktop | latest, with Compose | Postgres, Redis, RabbitMQ |
+| Git | any recent | Version control |
+
+Verify with `java -version`, `node -v`, `python --version`, `docker compose version`.
+
+### Phase 0 — One-time bootstrap (blocks all other work)
+
+These are the gaps that stop the repo from building today. One person completes them and
+merges to `main` before parallel work begins:
+
+1. **Parent POM + per-service POMs.** Add a root `pom.xml` declaring the Java services as
+   modules, and a `pom.xml` per Java service (Spring Boot parent, dependencies, Flyway).
+   Add the Maven wrapper (`mvnw`, `.mvn/`).
+2. **Restructure Java services to the Maven layout.** The convention folders
+   (`config/`, `controller/`, `service/`, `repository/`, `entity/`, `dto/`, `mapper/`,
+   `consumer/`, `exception/`, `security/`) currently sit at each service root. Maven only
+   compiles sources under `src/main/java/`, so they must move to:
+
+   ```
+   backend/<service>/src/main/java/com/devpulse/<service>/<folder>/
+   backend/<service>/src/main/resources/db/migration/      # Flyway looks here
+   backend/<service>/src/main/resources/application.yml
+   backend/<service>/src/test/java/com/devpulse/<service>/
+   ```
+
+   Do this **before** anyone writes code — moving files afterwards rewrites everyone's branch.
+3. **Add a `@SpringBootApplication` entrypoint class** per Java service, so each one can start.
+4. **Make `analytics-service` a real Python package.** Add `app/__init__.py` (and one in each
+   `app/*` subfolder) plus `app/main.py` exposing the FastAPI `app` object, so
+   `uvicorn app.main:app --reload` works.
+5. **Add `infrastructure/docker/docker-compose.yml`** bringing up PostgreSQL, Redis, and
+   RabbitMQ with named volumes and healthchecks.
+6. **Add a root `.env.example`** — [Getting Started](#getting-started) tells you to copy it,
+   but it does not exist yet.
+7. **Give `shared-contracts/` a build descriptor** so Java services can depend on it as a module.
+
+### Step 1 — Configure your environment
+
+Every service ships a committed `.env.local.example`. Copy each one to `.env.local` (which is
+gitignored) and fill in the placeholders:
+
+```bash
+for f in backend/*/.env.local.example frontend/*/.env.local.example; do
+  cp "$f" "${f%.example}"
+done
+```
+
+Ports are already assigned and do not collide:
+
+| Service | Port |
 |---|---|
-| **Admin** | Create and manage the organisation; invite and remove members; connect/disconnect GitHub and Jira integrations; control multi-tenant isolation and settings; full access to all dashboards |
-| **Manager** | View team-wide DORA dashboards; configure alert rules and channels; monitor developer workload and Developer Experience scores; view all team activity |
-| **Developer** | View personal and team activity; track own PRs and reviews; receive relevant alerts; read team dashboards |
-| **Viewer** | Read-only access to dashboards and reports (for stakeholders); no configuration or write access |
+| api-gateway | 8080 |
+| auth-service | 8081 |
+| integration-service | 8082 |
+| metrics-service | 8083 |
+| notification-service | 8084 |
+| analytics-service | 8000 |
+| dashboard-app | 3000 |
+| admin-app | 3001 |
+
+**Never commit a `.env.local`.** Only the `.example` templates are tracked. If you add a new
+variable, add it to the template *and* to [Environment Variables](#environment-variables).
+
+### Step 2 — Start the infrastructure
+
+Bring up Postgres, Redis, and RabbitMQ first — every service expects them to be running:
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.yml up -d
+```
+
+Confirm RabbitMQ is healthy at `http://localhost:15672` before starting any service.
+
+### Step 3 — Run only what you're working on
+
+You do not need the full stack. Run the infrastructure in Docker and just your service natively
+for a fast inner loop — see [Getting Started](#getting-started) for the per-service commands.
+A useful minimum for frontend work is: infrastructure + `auth-service` + `api-gateway`.
+
+### Step 4 — Follow the folder conventions when you code
+
+Put each file in the layer it belongs to; this is what keeps the services consistent:
+
+| Writing… | Goes in |
+|---|---|
+| An HTTP endpoint | `controller/` — keep it thin, delegate to `service/` |
+| Business logic | `service/` |
+| A database query | `repository/` |
+| A table mapping | `entity/` |
+| A request/response payload | `dto/` — never expose an `entity` over HTTP |
+| Entity ↔ DTO conversion | `mapper/` |
+| A RabbitMQ listener | `consumer/` |
+| A schema change | `src/main/resources/db/migration/` as a new `V<n>__description.sql` |
+
+Cross-service contracts (event schemas, shared DTOs) live in `backend/shared-contracts/` and
+their TypeScript mirrors in `frontend/shared-types/` — **update both together**, or the
+frontend and backend silently drift apart.
+
+### Step 5 — Branch, commit, and open a PR
+
+```bash
+git checkout -b feature/<short-description>
+```
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(metrics): ...`),
+keep changes scoped to one service where possible, add tests for any behaviour change, and
+confirm the service is green (`./mvnw test` / `pytest` / `npm test`) before opening the PR.
+
+### Before you start — two decisions to confirm with the team
+
+- **Database topology.** The `.env.local.example` files point at a **separate database per
+  service** (`.../auth`, `.../metrics`, `.../analytics`), while
+  [Technology Stack](#technology-stack) describes **one database with a schema per service**.
+  These require different init scripts, grants, and connection strings. Settle this before
+  writing the first migration.
+- **Migration tooling.** The Java services use **Flyway**; `analytics-service/requirements.txt`
+  currently pulls in **Alembic** and SQLAlchemy. Decide whether the Python service owns its
+  migrations or defers to the shared tooling.
 
 ---
 
