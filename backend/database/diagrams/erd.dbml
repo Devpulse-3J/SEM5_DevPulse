@@ -1,0 +1,249 @@
+// =====================================================================
+// DevPulse — Entity Relationship Diagram (DBML)
+//
+// One shared PostgreSQL database (`devpulse`). Tables are grouped by the
+// service that logically OWNS them (the only writer). Any service may READ
+// any table. Paste into https://dbdiagram.io to render, then export the
+// PNG to ./erd.png.
+//
+// Source of truth for the schema is ../migrations/V1__create_tables.sql —
+// keep this file in sync when you add a migration.
+// =====================================================================
+
+Project devpulse {
+  database_type: 'PostgreSQL'
+  Note: 'Shared database, single Flyway migration owner (backend/database).'
+}
+
+// ------------------------------------------------------------ auth-service
+Table companies {
+  company_id        integer [pk, increment]
+  company_name      varchar(255) [not null]
+  subscription_plan varchar(50) [not null, default: 'free', note: "free | pro | enterprise"]
+  created_at        timestamptz [not null, default: `now()`]
+}
+
+Table users {
+  user_id         integer [pk, increment]
+  company_id      integer [not null, ref: > companies.company_id]
+  email           varchar(320) [not null, unique]
+  full_name       varchar(255) [not null]
+  password_hash   varchar(255) [not null]
+  system_role     varchar(50) [not null, default: 'member', note: "admin | member"]
+  github_id       bigint
+  jira_account_id varchar(128)
+  created_at      timestamptz [not null, default: `now()`]
+  Indexes { company_id }
+}
+
+Table projects {
+  project_id       integer [pk, increment]
+  company_id       integer [not null, ref: > companies.company_id]
+  project_name     varchar(255) [not null]
+  jira_project_key varchar(50)
+  created_at       timestamptz [not null, default: `now()`]
+  Indexes { company_id }
+}
+
+Table project_members {
+  membership_id integer [pk, increment]
+  project_id    integer [not null, ref: > projects.project_id]
+  user_id       integer [not null, ref: > users.user_id]
+  role          varchar(50) [not null, default: 'developer', note: "manager | developer"]
+  joined_at     timestamptz [not null, default: `now()`]
+  Indexes { (user_id, project_id) [unique] }
+}
+
+Table integrations {
+  integration_id       integer [pk, increment]
+  company_id           integer [not null, ref: > companies.company_id]
+  provider             varchar(50) [not null, note: "github | jira | slack"]
+  external_id          varchar(128)
+  access_token         text
+  refresh_token        text
+  webhook_secret       varchar(255)
+  connected_by_user_id integer [ref: > users.user_id]
+  connected_at         timestamptz [not null, default: `now()`]
+  is_active            boolean [not null, default: true]
+  Indexes { (company_id, provider) [unique] }
+}
+
+// ----------------------------------------------------- integration-service
+Table repos {
+  repo_id        integer [pk, increment]
+  company_id     integer [not null, ref: > companies.company_id]
+  project_id     integer [ref: > projects.project_id]
+  github_repo_id bigint [not null]
+  repo_name      varchar(255) [not null]
+  owner_name     varchar(255) [not null]
+  full_name      varchar(511) [not null]
+  default_branch varchar(255) [not null, default: 'main']
+  Indexes {
+    project_id
+    (company_id, github_repo_id) [unique]
+  }
+}
+
+Table jira_issues {
+  issue_id     integer [pk, increment]
+  company_id   integer [not null, ref: > companies.company_id]
+  project_id   integer [ref: > projects.project_id]
+  jira_key     varchar(50) [not null]
+  summary      text
+  issue_type   varchar(50)
+  priority     varchar(50)
+  status       varchar(50) [not null, default: 'To Do']
+  story_points integer
+  assignee_id  integer [ref: > users.user_id]
+  created_at   timestamptz [not null, default: `now()`]
+  closed_at    timestamptz
+  Indexes {
+    assignee_id
+    (company_id, jira_key) [unique]
+  }
+}
+
+Table raw_event_log {
+  event_id         integer [pk, increment]
+  company_id       integer [not null, ref: > companies.company_id]
+  provider         varchar(50) [not null, note: "github | jira | slack"]
+  event_type       varchar(100) [not null]
+  payload          jsonb [not null]
+  received_at      timestamptz [not null, default: `now()`]
+  processed_at     timestamptz
+  processing_error text
+}
+
+// --------------------------------------------------------- metrics-service
+Table pull_requests {
+  pr_id            integer [pk, increment]
+  company_id       integer [not null, ref: > companies.company_id]
+  repo_id          integer [not null, ref: > repos.repo_id]
+  github_pr_number integer [not null]
+  title            varchar(1024) [not null]
+  author_id        integer [ref: > users.user_id]
+  base_branch      varchar(255) [not null, default: 'main']
+  is_draft         boolean [not null, default: false]
+  state            varchar(20) [not null, default: 'open', note: "open | closed | merged"]
+  lines_added      integer [not null, default: 0]
+  lines_deleted    integer [not null, default: 0]
+  files_changed    integer [not null, default: 0]
+  created_at       timestamptz [not null, default: `now()`]
+  first_review_at  timestamptz
+  merged_at        timestamptz
+  closed_at        timestamptz
+  Indexes {
+    author_id
+    (company_id, state)
+    (repo_id, github_pr_number) [unique]
+  }
+}
+
+Table pr_reviews {
+  review_id    integer [pk, increment]
+  company_id   integer [not null, ref: > companies.company_id]
+  pr_id        integer [not null, ref: > pull_requests.pr_id]
+  reviewer_id  integer [ref: > users.user_id]
+  review_state varchar(30) [not null, note: "approved | changes_requested | commented | dismissed"]
+  reviewed_at  timestamptz [not null, default: `now()`]
+  Indexes { pr_id }
+}
+
+Table commits {
+  commit_sha    varchar(40) [pk]
+  company_id    integer [not null, ref: > companies.company_id]
+  repo_id       integer [not null, ref: > repos.repo_id]
+  pr_id         integer [ref: > pull_requests.pr_id]
+  author_id     integer [ref: > users.user_id]
+  message       text
+  commit_time   timestamptz [not null]
+  lines_added   integer [not null, default: 0]
+  lines_deleted integer [not null, default: 0]
+  Indexes {
+    (repo_id, commit_time)
+    pr_id
+  }
+}
+
+Table deployments {
+  deployment_id        integer [pk, increment]
+  company_id           integer [not null, ref: > companies.company_id]
+  project_id           integer [ref: > projects.project_id]
+  commit_sha           varchar(40) [ref: > commits.commit_sha]
+  environment          varchar(50) [not null, default: 'production', note: "development | staging | production"]
+  status               varchar(20) [not null, default: 'pending', note: "pending | success | failed | rolled_back"]
+  deployed_at          timestamptz [not null, default: `now()`]
+  failure_recovered_at timestamptz
+  triggered_by_user_id integer [ref: > users.user_id]
+  Indexes { (project_id, deployed_at) }
+}
+
+Table dora_metrics {
+  metric_id            integer [pk, increment]
+  company_id           integer [not null, ref: > companies.company_id]
+  project_id           integer [not null, ref: > projects.project_id]
+  calculated_date      date [not null]
+  window_days          integer [not null, default: 30]
+  deployment_frequency "numeric(10,4)"
+  lead_time_hours      "numeric(10,2)"
+  change_failure_rate  "numeric(5,4)"
+  mttr_hours           "numeric(10,2)"
+  Indexes { (project_id, calculated_date, window_days) [unique] }
+}
+
+// ------------------------------------------------------- analytics-service
+Table pr_predictions {
+  prediction_id     integer [pk, increment]
+  company_id        integer [not null, ref: > companies.company_id]
+  pr_id             integer [not null, ref: > pull_requests.pr_id]
+  algorithm         varchar(50) [not null, note: "random_forest | xgboost | logistic_regression"]
+  model_version     varchar(20) [not null]
+  prediction_type   varchar(50) [not null, note: "stale_risk | high_risk_code"]
+  risk_category     varchar(20) [not null, note: "low | medium | high"]
+  risk_score        "numeric(5,4)" [not null]
+  confidence        "numeric(5,4)"
+  predicted_at      timestamptz [not null, default: `now()`]
+  actual_outcome    varchar(20) [note: "merged | became_stale | closed | still_open"]
+  actual_outcome_at timestamptz
+  Indexes {
+    (company_id, risk_category, predicted_at)
+    (pr_id, predicted_at)
+  }
+}
+
+// ---------------------------------------------------- notification-service
+Table alert_rules {
+  rule_id            integer [pk, increment]
+  company_id         integer [not null, ref: > companies.company_id]
+  project_id         integer [ref: > projects.project_id]
+  rule_type          varchar(50) [not null]
+  threshold_hours    integer
+  slack_channel      varchar(255)
+  is_active          boolean [not null, default: true]
+  created_by_user_id integer [ref: > users.user_id]
+  created_at         timestamptz [not null, default: `now()`]
+}
+
+Table alerts {
+  alert_id     integer [pk, increment]
+  company_id   integer [not null, ref: > companies.company_id]
+  project_id   integer [ref: > projects.project_id]
+  rule_id      integer [ref: > alert_rules.rule_id]
+  entity_type  varchar(50) [not null, note: "pull_request | deployment | jira_issue | repo"]
+  entity_id    integer [note: 'polymorphic — no FK, resolved with entity_type']
+  severity     varchar(20) [not null, default: 'warning', note: "info | warning | critical"]
+  message      text
+  triggered_at timestamptz [not null, default: `now()`]
+  resolved_at  timestamptz
+}
+
+Table notifications {
+  notification_id integer [pk, increment]
+  company_id      integer [not null, ref: > companies.company_id]
+  alert_id        integer [not null, ref: > alerts.alert_id]
+  user_id         integer [ref: > users.user_id]
+  channel         varchar(20) [not null, note: "email | slack | in_app"]
+  status          varchar(20) [not null, default: 'pending', note: "pending | sent | failed | read"]
+  sent_at         timestamptz
+  Indexes { (user_id, status) }
+}

@@ -1,4 +1,4 @@
-# CodeLens — analytics-service (Python + FastAPI) dependencies
+# DevPulse — analytics-service (Python + FastAPI) dependencies
 # Pin exact versions before committing for reproducible builds.
 
 # --- Web framework ---
@@ -16,10 +16,11 @@ scikit-learn
 xgboost
 joblib
 
-# --- Persistence ---
+# --- Persistence (read/write pr_predictions only; NO migrations) ---
+# Schema is owned centrally by backend/database (Flyway). Do NOT add a
+# migration tool (alembic) here — this service must not migrate the shared DB.
 sqlalchemy
 psycopg2-binary
-alembic
 
 # --- Messaging (RabbitMQ) ---
 pika

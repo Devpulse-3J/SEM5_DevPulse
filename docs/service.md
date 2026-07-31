@@ -4,9 +4,13 @@ What each service is *for*, and what breaks if you delete it. This is the orient
 document — read it before picking up your first ticket. For the folder layout and build
 instructions, see the [README](../README.md).
 
+> **Database note:** all backend services share **one** PostgreSQL database (`devpulse`); no
+> service owns its own database. Each service logically *owns* specific tables — it may read any
+> table but writes only its own. See [Shared database & table ownership](#shared-database--table-ownership).
+
 **At a glance**
 
-| Service | Runtime | Port | Owns a database? | One-line purpose |
+| Service | Runtime | Port | Connects to DB? | One-line purpose |
 |---|---|---|---|---|
 | [api-gateway](#api-gateway) | Java · Spring Cloud Gateway | 8080 | No | The front door — the only publicly reachable process |
 | [auth-service](#auth-service) | Java · Spring Boot | 8081 | Yes | Who you are, and what you're allowed to touch |
@@ -105,17 +109,35 @@ backend silently drift apart.
 
 ---
 
-## The two frontends
 
-- **`dashboard-app` (3000)** — what Managers and Developers use daily. DORA charts, workload,
-  and PR activity for a selected project.
-- **`admin-app` (3001)** — what an Admin uses occasionally. Create and delete projects, assign
-  Managers, connect GitHub and Jira.
 
-Split into two apps because the audiences and the risk profiles are different — you do not want
-project deletion sitting one tab away from a chart.
+## Shared database & table ownership
 
----
+All backend services connect to **one shared PostgreSQL database** (`devpulse`). This is
+deliberate for a small team — simpler to run, and it lets foreign keys cross service boundaries
+(`pull_requests → users`, `dora_metrics → projects`). PostgreSQL is infrastructure, not a service.
+
+The discipline that keeps this "microservices" and not a big ball of mud:
+
+> **A service READS any table it needs, but WRITES only the tables it owns.**
+
+| Service | Owns (writes) |
+|---|---|
+| auth-service | companies, users, projects, project_members, integrations |
+| integration-service | repos, jira_issues, raw_event_log |
+| metrics-service | pull_requests, pr_reviews, commits, deployments, dora_metrics |
+| analytics-service | pr_predictions |
+| notification-service | alert_rules, alerts, notifications |
+
+To change data it doesn't own, a service calls the owner over REST or reacts to an event — it
+never writes another service's tables. `api-gateway` holds no DB connection at all.
+
+## Migrations
+
+The schema is owned centrally by [`backend/database/`](../backend/database/README.md). There is
+**one** Flyway migration owner; individual services carry no migrations and run with
+`spring.flyway.enabled=false`. Add a schema change as a new `V<n>__*.sql` in
+`backend/database/migrations/` — never inside a service.
 
 ## The pattern underneath
 

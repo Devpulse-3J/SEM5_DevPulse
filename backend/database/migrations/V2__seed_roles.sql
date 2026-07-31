@@ -1,0 +1,18 @@
+-- =====================================================================
+-- V2__seed_roles.sql
+--
+-- DevPulse enforces roles with CHECK constraints, NOT a lookup table:
+--
+--   users.system_role      IN ('admin', 'member')       -- company level
+--   project_members.role   IN ('manager', 'developer')  -- per project
+--
+-- There is therefore no `roles` table to populate. This migration is an
+-- intentional, versioned placeholder: it documents the canonical role
+-- values and reserves V2 for any future role / permission metadata
+-- (for example a dedicated permissions table). It makes no changes.
+--
+-- Do NOT delete or renumber this file once it has run in any environment;
+-- Flyway tracks migrations by version and checksum.
+-- =====================================================================
+
+-- (intentional no-op)

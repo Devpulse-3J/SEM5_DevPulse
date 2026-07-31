@@ -5,6 +5,9 @@ Thumbs.db
 .vscode/
 *.swp
 
+# ---- Local AI assistant guidance (not shared) ----
+CLAUDE.md
+
 # ---- Env / secrets ----
 .env
 .env.local
@@ -52,3 +55,6 @@ env/
 *.log
 coverage/
 .coverage
+
+
+CLAUDE.md

@@ -10,17 +10,18 @@
 2. [Key Features](#key-features)
 3. [Architecture Overview](#architecture-overview)
 4. [Technology Stack](#technology-stack)
-5. [Repository Structure](#repository-structure)
-6. [Services in Detail](#services-in-detail)
-7. [Data Flow Diagrams](#data-flow-diagrams)
-8. [User Roles](#user-roles)
-9. [Setup Guide — From Clone to First Commit](#setup-guide--from-clone-to-first-commit)
-10. [Getting Started](#getting-started)
-11. [Environment Variables](#environment-variables)
-12. [Development Workflow](#development-workflow)
-13. [API Documentation](#api-documentation)
-14. [Contributing](#contributing)
-15. [License and Authors](#license-and-authors)
+5. [Database](#database)
+6. [Repository Structure](#repository-structure)
+7. [Services in Detail](#services-in-detail)
+8. [Data Flow Diagrams](#data-flow-diagrams)
+9. [User Roles](#user-roles)
+10. [Setup Guide — From Clone to First Commit](#setup-guide--from-clone-to-first-commit)
+11. [Getting Started](#getting-started)
+12. [Environment Variables](#environment-variables)
+13. [Development Workflow](#development-workflow)
+14. [API Documentation](#api-documentation)
+15. [Contributing](#contributing)
+16. [License and Authors](#license-and-authors)
 
 ---
 
@@ -121,7 +122,7 @@ The following diagram shows how a single GitHub webhook (e.g. "pull request open
 | Spring Cloud Gateway | API gateway: routing, single entry point, edge auth |
 | Spring Security + JJWT | Authentication, JWT issuance/validation, RBAC enforcement |
 | Spring Data JPA (Hibernate) | ORM and repository layer over PostgreSQL |
-| Flyway | Versioned database schema migrations |
+| Flyway | Versioned schema migrations — run by ONE central owner (`backend/database/`), not per service |
 | Spring AMQP | RabbitMQ producer/consumer integration |
 | Springdoc OpenAPI | Auto-generated Swagger UI and OpenAPI specs |
 | Maven | Build, dependency, and lifecycle management |
@@ -141,7 +142,7 @@ The following diagram shows how a single GitHub webhook (e.g. "pull request open
 
 | Technology | Purpose in the System |
 |---|---|
-| PostgreSQL | Primary datastore, one schema per service |
+| PostgreSQL | Single **shared** database (`devpulse`) for all services; deployed as infrastructure, not per service |
 | Redis | Caching and rate-limit counters |
 | RabbitMQ | Asynchronous event-driven messaging between services |
 | Docker + Docker Compose | Local containerisation and orchestration |
@@ -156,6 +157,33 @@ The following diagram shows how a single GitHub webhook (e.g. "pull request open
 | GitHub Actions | CI/CD pipelines, per service |
 | Docker Compose | Local dev orchestration of the full stack |
 | Kubernetes manifests | Optional production deployment target |
+
+---
+
+## Database
+
+DevPulse uses **one shared PostgreSQL database** (`devpulse`) for the whole backend.
+Database-per-service is intentionally **not** used — for a 3-person project a single database
+means simpler deployment and maintenance, and it allows the cross-domain foreign keys the schema
+relies on (`pull_requests → users`, `dora_metrics → projects`, `pr_predictions → pull_requests`).
+PostgreSQL is deployed as an infrastructure component (Docker locally; Neon/Supabase/RDS in the
+cloud), not as a microservice.
+
+**Logical table ownership.** Every table is physically in one database but logically owned by one
+service. The rule: *a service may READ any table it needs, but WRITE only the tables it owns.*
+
+| Service | Owns (writes) |
+|---|---|
+| auth-service | `companies`, `users`, `projects`, `project_members`, `integrations` |
+| integration-service | `repos`, `jira_issues`, `raw_event_log` |
+| metrics-service | `pull_requests`, `pr_reviews`, `commits`, `deployments`, `dora_metrics` |
+| analytics-service | `pr_predictions` |
+| notification-service | `alert_rules`, `alerts`, `notifications` |
+
+**One migration owner.** The schema lives only in `backend/database/migrations/` as Flyway files
+(`V<n>__description.sql`), applied by a single dedicated `flyway` container. Individual services
+do not contain migrations and run with `spring.flyway.enabled=false`. Full detail — rationale,
+naming conventions, and workflow — is in [`backend/database/README.md`](backend/database/README.md).
 
 ---
 
@@ -176,10 +204,15 @@ devpulse/
 │   ├── metrics-service/        # stores PRs/commits/deployments, exposes DORA metrics
 │   ├── analytics-service/      # Python + FastAPI, ML predictions for stale/high-risk PRs
 │   ├── notification-service/   # Slack, email, custom webhook alerts
-│   └── shared-contracts/       # event schemas, OpenAPI specs, shared DTOs
+│   ├── shared-contracts/       # event schemas, OpenAPI specs, shared DTOs
+│   └── database/               # shared DB: Flyway migrations (single owner), ERD, seeds
+│       ├── migrations/         #   V1__create_tables.sql, V2__…  (the ONLY migration source)
+│       ├── diagrams/           #   erd.dbml → erd.png
+│       ├── seeds/              #   optional ad-hoc seed data
+│       └── README.md           #   why one DB, table ownership, migration workflow
 │
 ├── infrastructure/
-│   ├── docker/                 # Dockerfiles and config for Postgres, Redis, RabbitMQ
+│   ├── docker/                 # docker-compose.yml + postgres/ rabbitmq/ redis/ config
 │   ├── kubernetes/             # optional k8s manifests
 │   └── monitoring/             # Prometheus and Grafana configs
 │
@@ -203,7 +236,8 @@ devpulse/
 | `backend/analytics-service/` | Python/FastAPI service running ML models to score PRs for staleness and risk |
 | `backend/notification-service/` | Dispatches alerts to Slack, email, and custom webhooks based on configured rules |
 | `backend/shared-contracts/` | Language-neutral event schemas, OpenAPI specs, and shared DTO definitions |
-| `infrastructure/docker/` | Dockerfiles and supporting config for PostgreSQL, Redis, and RabbitMQ |
+| `backend/database/` | Single source of truth for the shared database — Flyway migrations (the only migration owner), ERD, seeds, and the DB README |
+| `infrastructure/docker/` | `docker-compose.yml` plus per-component config folders (`postgres/`, `rabbitmq/`, `redis/`) for the local stack |
 | `infrastructure/kubernetes/` | Optional Kubernetes manifests for production deployment |
 | `infrastructure/monitoring/` | Prometheus scrape configs and Grafana dashboard definitions |
 | `scripts/` | Developer helper scripts for environment setup, database seeding, and resets |
@@ -212,7 +246,7 @@ devpulse/
 
 ### Internal structure of a Java service
 
-Every Java service follows a consistent internal layout. Not all folders exist in every service (e.g. only `auth-service` has `security/`, and only database-owning services have `db/migration/`).
+Every Java service follows a consistent internal layout. Not all folders exist in every service (e.g. only `auth-service` has `security/`). **No service contains a `db/migration/` folder** — all migrations are centralized in `backend/database/` (see [Database](#database)).
 
 | Folder | Purpose |
 |---|---|
@@ -226,7 +260,9 @@ Every Java service follows a consistent internal layout. Not all folders exist i
 | `security/` | Authentication and authorisation components — JWT filters, RBAC rules (`auth-service` only) |
 | `consumer/` | RabbitMQ event listeners that react to messages published by other services |
 | `exception/` | Custom exceptions and global exception handlers for consistent error responses |
-| `resources/db/migration/` | Flyway SQL migration scripts that version the service's owned schema |
+
+Schema migrations do **not** live in the service — they are added to `backend/database/migrations/`
+and applied by the single Flyway owner. Each Java service runs with `spring.flyway.enabled=false`.
 
 The **analytics-service** (Python) uses a FastAPI-idiomatic layout instead: `app/routers/` (endpoints), `app/services/` (inference logic), `app/models/` (trained/serialised ML models and training code), `app/schemas/` (Pydantic request/response models), and `tests/`.
 
@@ -455,21 +491,21 @@ merges to `main` before parallel work begins:
 
    ```
    backend/<service>/src/main/java/com/devpulse/<service>/<folder>/
-   backend/<service>/src/main/resources/db/migration/      # Flyway looks here
-   backend/<service>/src/main/resources/application.yml
+   backend/<service>/src/main/resources/application.yml   # set spring.flyway.enabled=false
    backend/<service>/src/test/java/com/devpulse/<service>/
    ```
 
    Do this **before** anyone writes code — moving files afterwards rewrites everyone's branch.
+   Note there is **no** `db/migration/` folder — migrations are centralized in `backend/database/`.
 3. **Add a `@SpringBootApplication` entrypoint class** per Java service, so each one can start.
 4. **Make `analytics-service` a real Python package.** Add `app/__init__.py` (and one in each
    `app/*` subfolder) plus `app/main.py` exposing the FastAPI `app` object, so
    `uvicorn app.main:app --reload` works.
-5. **Add `infrastructure/docker/docker-compose.yml`** bringing up PostgreSQL, Redis, and
-   RabbitMQ with named volumes and healthchecks.
-6. **Add a root `.env.example`** — [Getting Started](#getting-started) tells you to copy it,
-   but it does not exist yet.
-7. **Give `shared-contracts/` a build descriptor** so Java services can depend on it as a module.
+5. **Give `shared-contracts/` a build descriptor** so Java services can depend on it as a module.
+
+Already done (do not redo): `infrastructure/docker/docker-compose.yml` (full stack + a dedicated
+`flyway` migration service), `infrastructure/docker/.env.example`, and the shared-database schema
+in `backend/database/migrations/`.
 
 ### Step 1 — Configure your environment
 
@@ -498,15 +534,20 @@ Ports are already assigned and do not collide:
 **Never commit a `.env.local`.** Only the `.example` templates are tracked. If you add a new
 variable, add it to the template *and* to [Environment Variables](#environment-variables).
 
-### Step 2 — Start the infrastructure
+### Step 2 — Start the infrastructure and apply migrations
 
-Bring up Postgres, Redis, and RabbitMQ first — every service expects them to be running:
+Copy the Docker secrets file, then bring up Postgres, Redis, RabbitMQ, and the one-shot `flyway`
+migration service (it applies `backend/database/migrations/` to the shared `devpulse` database and
+exits):
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.yml up -d
+cp infrastructure/docker/.env.example infrastructure/docker/.env   # edit secrets
+docker compose -f infrastructure/docker/docker-compose.yml up -d postgres redis rabbitmq flyway
+docker compose -f infrastructure/docker/docker-compose.yml logs flyway   # confirm migrations applied
 ```
 
-Confirm RabbitMQ is healthy at `http://localhost:15672` before starting any service.
+Confirm RabbitMQ is healthy at `http://localhost:15672` before starting any service. (The full
+`up` including service containers won't work until each service has a Dockerfile.)
 
 ### Step 3 — Run only what you're working on
 
@@ -527,7 +568,7 @@ Put each file in the layer it belongs to; this is what keeps the services consis
 | A request/response payload | `dto/` — never expose an `entity` over HTTP |
 | Entity ↔ DTO conversion | `mapper/` |
 | A RabbitMQ listener | `consumer/` |
-| A schema change | `src/main/resources/db/migration/` as a new `V<n>__description.sql` |
+| A schema change | `backend/database/migrations/` as a new `V<n>__description.sql` (central Flyway owner — never inside a service) |
 
 Cross-service contracts (event schemas, shared DTOs) live in `backend/shared-contracts/` and
 their TypeScript mirrors in `frontend/shared-types/` — **update both together**, or the
@@ -543,16 +584,17 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(metrics)
 keep changes scoped to one service where possible, add tests for any behaviour change, and
 confirm the service is green (`./mvnw test` / `pytest` / `npm test`) before opening the PR.
 
-### Before you start — two decisions to confirm with the team
+### Settled architecture decisions
 
-- **Database topology.** The `.env.local.example` files point at a **separate database per
-  service** (`.../auth`, `.../metrics`, `.../analytics`), while
-  [Technology Stack](#technology-stack) describes **one database with a schema per service**.
-  These require different init scripts, grants, and connection strings. Settle this before
-  writing the first migration.
-- **Migration tooling.** The Java services use **Flyway**; `analytics-service/requirements.txt`
-  currently pulls in **Alembic** and SQLAlchemy. Decide whether the Python service owns its
-  migrations or defers to the shared tooling.
+- **Database topology — DECIDED: one shared database.** All services connect to a single
+  PostgreSQL database `devpulse`. Database-per-service is intentionally not used. See
+  [Database](#database) and `backend/database/README.md`.
+- **Migrations — DECIDED: one Flyway owner.** Migrations live only in `backend/database/migrations/`
+  and are applied by the dedicated `flyway` container. Every service sets
+  `spring.flyway.enabled=false`; the Python service carries no migration tool.
+- **JWT role claim — STILL OPEN.** Because roles are per-`(user, project)`, the token can't carry
+  one global role claim. Decide (per-request membership lookup vs. embedded project→role map)
+  before building `auth-service`.
 
 ---
 
@@ -573,11 +615,11 @@ git clone <your-repo-url> devpulse
 cd devpulse
 
 # 2. Copy environment templates and fill in placeholders
-cp .env.example .env
-# edit .env with your secrets (see Environment Variables below)
+cp infrastructure/docker/.env.example infrastructure/docker/.env
+# edit it with your secrets (see Environment Variables below)
 
-# 3. Bring up the full stack (services + Postgres + Redis + RabbitMQ)
-docker-compose up --build
+# 3. Bring up the full stack (services + Postgres + Redis + RabbitMQ + Flyway migrations)
+docker compose -f infrastructure/docker/docker-compose.yml up --build
 ```
 
 Once the stack is healthy:
@@ -617,8 +659,9 @@ Each service reads configuration from environment variables. The table below lis
 
 | Variable | Service(s) | Purpose |
 |---|---|---|
-| `POSTGRES_URL` | all DB-owning services | JDBC/DSN connection string to PostgreSQL |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` | all DB-owning services | Database credentials |
+| `POSTGRES_URL` | all DB-using services | Connection string to the single shared `devpulse` database (JDBC for Java, DSN for Python) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | all DB-using services | Shared database credentials |
+| `SPRING_FLYWAY_ENABLED` | all Java services | Must be `false` — migrations are run only by the central `backend/database` Flyway owner |
 | `JWT_SECRET` | auth-service, api-gateway | Signing/validation key for JWTs |
 | `JWT_EXPIRATION` | auth-service | Access token lifetime |
 | `GITHUB_WEBHOOK_SECRET` | integration-service | HMAC secret to verify GitHub webhook signatures |
