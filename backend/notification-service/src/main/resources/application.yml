@@ -1,0 +1,23 @@
+server:
+  port: ${SERVER_PORT:8084}
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/devpulse}
+    username: ${POSTGRES_USER:devpulse}
+    password: ${POSTGRES_PASSWORD:devpulse}
+  jpa:
+    hibernate:
+      # Schema is owned by Flyway (backend/database); validate entities, never modify.
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:false}
+  rabbitmq:
+    addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

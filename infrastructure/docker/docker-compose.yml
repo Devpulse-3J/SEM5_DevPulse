@@ -105,7 +105,9 @@ services:
 
   api-gateway:
     <<: *service-defaults
-    build: ../../backend/api-gateway
+    build:
+      context: ../../backend
+      dockerfile: api-gateway/Dockerfile
     container_name: devpulse-api-gateway
     depends_on:
       redis: { condition: service_healthy }
@@ -119,7 +121,9 @@ services:
 
   auth-service:
     <<: *service-defaults
-    build: ../../backend/auth-service
+    build:
+      context: ../../backend
+      dockerfile: auth-service/Dockerfile
     container_name: devpulse-auth-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -138,7 +142,9 @@ services:
 
   integration-service:
     <<: *service-defaults
-    build: ../../backend/integration-service
+    build:
+      context: ../../backend
+      dockerfile: integration-service/Dockerfile
     container_name: devpulse-integration-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -158,7 +164,9 @@ services:
 
   metrics-service:
     <<: *service-defaults
-    build: ../../backend/metrics-service
+    build:
+      context: ../../backend
+      dockerfile: metrics-service/Dockerfile
     container_name: devpulse-metrics-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -173,7 +181,9 @@ services:
 
   notification-service:
     <<: *service-defaults
-    build: ../../backend/notification-service
+    build:
+      context: ../../backend
+      dockerfile: notification-service/Dockerfile
     container_name: devpulse-notification-service
     depends_on:
       postgres: { condition: service_healthy }
@@ -205,7 +215,7 @@ services:
       # SQLAlchemy DSN (not JDBC) — analytics-service is Python. Same shared DB.
       # It reads/writes only pr_predictions; it does NOT run migrations.
       POSTGRES_URL: postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
-      ANALYTICS_MODEL_PATH: ./app/models/pr_risk_model.joblib
+      ANALYTICS_MODEL_PATH: ./app/artifacts/pr_risk_model.joblib
       RISK_THRESHOLD: ${RISK_THRESHOLD:-0.7}
     ports:
       - "8000:8000"

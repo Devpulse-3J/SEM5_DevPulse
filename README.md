@@ -458,54 +458,41 @@ member), while the per-project role is resolved from the membership table on eac
 
 ## Setup Guide — From Clone to First Commit
 
-> **Current repository state:** this repo is a **directory skeleton**. Every service folder
-> exists with its internal layout, but there are no build files, no entrypoint classes, and
-> no Docker configuration yet. Phase 0 below must be completed once, by one person, before
-> anyone else can compile or run anything. Until then, the commands in
-> [Getting Started](#getting-started) will not work.
+> **Current repository state:** Phase 0 is **done** — the backend is a Maven multi-module project
+> and each service builds. What's left is feature code inside the (empty) service packages. The
+> commands in [Getting Started](#getting-started) work.
 
 ### Step 0 — Install prerequisites
 
 | Tool | Version | Needed for |
 |---|---|---|
 | JDK | 17+ | All Java services and Maven builds |
-| Node.js | 20+ | Both Next.js frontends |
 | Python | 3.11+ | analytics-service |
-| Docker Desktop | latest, with Compose | Postgres, Redis, RabbitMQ |
+| Docker Desktop | latest, with Compose | Postgres, Redis, RabbitMQ, and building the services |
 | Git | any recent | Version control |
+| Maven | 3.9+ (optional) | Native Java builds; not needed if you build via Docker |
 
-Verify with `java -version`, `node -v`, `python --version`, `docker compose version`.
+Verify with `java -version`, `python --version`, `docker compose version`.
 
-### Phase 0 — One-time bootstrap (blocks all other work)
+### Phase 0 — bootstrap (DONE)
 
-These are the gaps that stop the repo from building today. One person completes them and
-merges to `main` before parallel work begins:
+The one-time bootstrap is complete and merged. For reference, it delivered:
 
-1. **Parent POM + per-service POMs.** Add a root `pom.xml` declaring the Java services as
-   modules, and a `pom.xml` per Java service (Spring Boot parent, dependencies, Flyway).
-   Add the Maven wrapper (`mvnw`, `.mvn/`).
-2. **Restructure Java services to the Maven layout.** The convention folders
-   (`config/`, `controller/`, `service/`, `repository/`, `entity/`, `dto/`, `mapper/`,
-   `consumer/`, `exception/`, `security/`) currently sit at each service root. Maven only
-   compiles sources under `src/main/java/`, so they must move to:
+- **Maven multi-module build** — parent `backend/pom.xml` (Spring Boot 3.3.5, Java 17, Spring
+  Cloud 2023.0.3) aggregating `shared-contracts` and the five Java services, each with its own
+  `pom.xml`.
+- **Maven layout** — sources under `backend/<service>/src/main/java/com/devpulse/<pkg>/`,
+  `application.yml` under `src/main/resources/`, tests under `src/test/java/…`. No `db/migration/`
+  in any service (migrations are centralized in `backend/database/`).
+- **Entrypoints** — a `@SpringBootApplication` per Java service.
+- **`analytics-service`** — a runnable FastAPI package (`app/main.py`, `app/__init__.py`).
+- **Dockerfiles** — one per service; Java services build via context `backend/` (multi-module).
+- **Infra** — `infrastructure/docker/docker-compose.yml` (full stack + dedicated `flyway`
+  migration service), `.env.example`, and the shared-database schema in `backend/database/`.
 
-   ```
-   backend/<service>/src/main/java/com/devpulse/<service>/<folder>/
-   backend/<service>/src/main/resources/application.yml   # set spring.flyway.enabled=false
-   backend/<service>/src/test/java/com/devpulse/<service>/
-   ```
-
-   Do this **before** anyone writes code — moving files afterwards rewrites everyone's branch.
-   Note there is **no** `db/migration/` folder — migrations are centralized in `backend/database/`.
-3. **Add a `@SpringBootApplication` entrypoint class** per Java service, so each one can start.
-4. **Make `analytics-service` a real Python package.** Add `app/__init__.py` (and one in each
-   `app/*` subfolder) plus `app/main.py` exposing the FastAPI `app` object, so
-   `uvicorn app.main:app --reload` works.
-5. **Give `shared-contracts/` a build descriptor** so Java services can depend on it as a module.
-
-Already done (do not redo): `infrastructure/docker/docker-compose.yml` (full stack + a dedicated
-`flyway` migration service), `infrastructure/docker/.env.example`, and the shared-database schema
-in `backend/database/migrations/`.
+> **Note on the Maven wrapper:** `./mvnw` is not committed (the bootstrap machine had no Maven).
+> Build via Docker (recommended, no local Maven needed) or generate the wrapper once with
+> `cd backend && mvn -N wrapper:wrapper` if you have Maven installed.
 
 ### Step 1 — Configure your environment
 
