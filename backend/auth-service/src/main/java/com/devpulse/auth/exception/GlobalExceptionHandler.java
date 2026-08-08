@@ -13,14 +13,22 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Global exception handler that converts exceptions into clean, consistent
- * JSON error responses.
+ * Global exception handler that converts exceptions into clean, consistent JSON error responses.
+ * Leverages polymorphism by handling the {@link BaseAuthException} hierarchy.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     /**
-     * Handles validation errors (e.g. blank email, short password).
+     * Polymorphic handler for all domain-specific auth exceptions.
+     */
+    @ExceptionHandler(BaseAuthException.class)
+    public ResponseEntity<Map<String, Object>> handleBaseAuthException(BaseAuthException ex) {
+        return buildErrorResponse(ex.getStatus(), ex.getMessage());
+    }
+
+    /**
+     * Handles request validation errors (e.g. invalid email format, short password).
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationErrors(
@@ -41,40 +49,35 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles bad credentials during login.
+     * Handles Spring Security bad credentials.
      */
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<Map<String, Object>> handleBadCredentials(
-            BadCredentialsException ex) {
+    public ResponseEntity<Map<String, Object>> handleBadCredentials(BadCredentialsException ex) {
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid email or password");
     }
 
     /**
-     * Handles user not found.
+     * Handles username not found from security filters.
      */
     @ExceptionHandler(UsernameNotFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleUserNotFound(
-            UsernameNotFoundException ex) {
+    public ResponseEntity<Map<String, Object>> handleUserNotFound(UsernameNotFoundException ex) {
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid email or password");
     }
 
     /**
-     * Handles duplicate email registration and other illegal argument errors.
+     * Handles general illegal argument exceptions.
      */
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgument(
-            IllegalArgumentException ex) {
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     /**
-     * Handles any unhandled runtime exception.
+     * Fallback handler for any uncaught runtime exceptions.
      */
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, Object>> handleRuntimeException(
-            RuntimeException ex) {
-        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred");
+    public ResponseEntity<Map<String, Object>> handleRuntimeException(RuntimeException ex) {
+        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 
     // -- helpers -------------------------------------------------------------
