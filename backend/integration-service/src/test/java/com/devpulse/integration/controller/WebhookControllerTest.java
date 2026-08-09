@@ -1,8 +1,12 @@
 package com.devpulse.integration.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.devpulse.contracts.events.BaseEvent;
 import com.devpulse.integration.entity.RawEventLog;
 import com.devpulse.integration.github.GithubSignatureValidator;
 import com.devpulse.integration.repository.RawEventLogRepository;
+import com.devpulse.integration.service.EventPublisherService;
+import com.devpulse.integration.service.WebhookEventNormalizer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -16,12 +20,16 @@ public class WebhookControllerTest {
 
     private RawEventLogRepository rawEventLogRepository;
     private GithubSignatureValidator stubValidator;
+    private WebhookEventNormalizer normalizer;
+    private EventPublisherService eventPublisherService;
     private WebhookController controller;
     private boolean signatureResult = true;
 
     @BeforeEach
     public void setUp() {
         rawEventLogRepository = mock(RawEventLogRepository.class);
+        eventPublisherService = mock(EventPublisherService.class);
+        normalizer = new WebhookEventNormalizer(new ObjectMapper());
         
         stubValidator = new GithubSignatureValidator() {
             @Override
@@ -30,7 +38,7 @@ public class WebhookControllerTest {
             }
         };
 
-        controller = new WebhookController(rawEventLogRepository, stubValidator);
+        controller = new WebhookController(rawEventLogRepository, stubValidator, normalizer, eventPublisherService);
     }
 
     @Test
@@ -42,12 +50,15 @@ public class WebhookControllerTest {
             return log;
         });
 
+        String githubJson = "{\"action\":\"opened\",\"pull_request\":{\"id\":101,\"number\":5,\"title\":\"Test PR\"}}";
+
         ResponseEntity<?> response = controller.handleGithubWebhook(
-                "{\"action\":\"opened\"}", "pull_request", "sha256=valid", 1
+                githubJson, "pull_request", "sha256=valid", 1
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(rawEventLogRepository, times(1)).save(any(RawEventLog.class));
+        verify(eventPublisherService, times(1)).publishEvent(any(BaseEvent.class));
     }
 
     @Test
@@ -60,6 +71,7 @@ public class WebhookControllerTest {
 
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
         verify(rawEventLogRepository, never()).save(any());
+        verify(eventPublisherService, never()).publishEvent(any());
     }
 
     @Test
@@ -70,11 +82,14 @@ public class WebhookControllerTest {
             return log;
         });
 
+        String jiraJson = "{\"issue\":{\"id\":200,\"key\":\"DEV-42\",\"fields\":{\"summary\":\"Fix bug\"}}}";
+
         ResponseEntity<?> response = controller.handleJiraWebhook(
-                "{\"issue\":{}}", "jira:issue_updated", 1
+                jiraJson, "jira:issue_updated", 1
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(rawEventLogRepository, times(1)).save(any(RawEventLog.class));
+        verify(eventPublisherService, times(1)).publishEvent(any(BaseEvent.class));
     }
 }
