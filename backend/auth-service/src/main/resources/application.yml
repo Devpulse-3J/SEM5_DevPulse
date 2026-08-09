@@ -20,6 +20,12 @@ jwt:
   secret: ${JWT_SECRET:devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
   expiration: ${JWT_EXPIRATION:3600}
 management:
+  endpoint:
+    health:
+      show-details: always
+  health:
+    rabbit:
+      enabled: false
   endpoints:
     web:
       exposure:
