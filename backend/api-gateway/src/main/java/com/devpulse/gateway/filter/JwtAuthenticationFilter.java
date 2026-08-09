@@ -10,6 +10,7 @@ import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 
 import com.devpulse.gateway.security.JwtService;
@@ -66,13 +67,13 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         List<String> authHeaders = request.getHeaders().get("Authorization");
         if (authHeaders == null || authHeaders.isEmpty()) {
             log.debug("Rejected {}: no Authorization header", path);
-            return unauthorized(exchange);
+            return unauthorized("Missing Authorization header");
         }
 
         String header = authHeaders.get(0);
         if (!header.startsWith("Bearer ")) {
             log.debug("Rejected {}: not Bearer scheme", path);
-            return unauthorized(exchange);
+            return unauthorized("Authorization header must use the Bearer scheme");
         }
 
         String token = header.substring(7);
@@ -91,7 +92,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange.mutate().request(mutated).build());
         } catch (JwtException | NumberFormatException e) {
             log.debug("Rejected {}: {}", path, e.getMessage());
-            return unauthorized(exchange);
+            return unauthorized("Invalid or expired token");
         }
     }
 
@@ -99,9 +100,13 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
-    private Mono<Void> unauthorized(ServerWebExchange exchange) {
-        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-        return exchange.getResponse().setComplete();
+    /**
+     * Signals a 401 as an error on the reactive chain rather than completing the response
+     * here, so GlobalExceptionHandler renders it in the same JSON shape as every other
+     * gateway error. The reason is logged by that handler, never sent to the caller.
+     */
+    private Mono<Void> unauthorized(String reason) {
+        return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, reason));
     }
 
     @Override
