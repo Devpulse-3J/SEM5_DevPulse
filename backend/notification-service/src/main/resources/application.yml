@@ -15,7 +15,9 @@ spring:
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
   rabbitmq:
-    addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+    username: ${RABBITMQ_USER:devpulse}
+    password: ${RABBITMQ_PASSWORD:devpulse}
+    addresses: ${RABBITMQ_URL:amqp://devpulse:devpulse@localhost:5672}
 management:
   endpoints:
     web:

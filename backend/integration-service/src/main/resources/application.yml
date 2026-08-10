@@ -16,6 +16,10 @@ spring:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
   rabbitmq:
     addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+
+devpulse:
+  rabbitmq:
+    exchange: ${DEVPULSE_RABBITMQ_EXCHANGE:devpulse.events}
 management:
   endpoints:
     web:
