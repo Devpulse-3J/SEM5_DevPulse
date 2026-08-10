@@ -97,4 +97,15 @@ public class WebhookController {
                 "eventId", rawLog.getEventId()
         ));
     }
+
+    @PostMapping("/test-high-risk-alert")
+    public ResponseEntity<?> testHighRiskAlert() {
+        AlertPrHighRiskEvent alertEvent = new AlertPrHighRiskEvent(
+                UUID.randomUUID().toString(),
+                1, 1, Instant.now(),
+                100, 105, "random_forest", "v1.0", "critical", 0.92, 0.95, Instant.now()
+        );
+        eventPublisherService.publishEvent(alertEvent);
+        return ResponseEntity.ok(Map.of("status", "success", "message", "High risk alert published to RabbitMQ"));
+    }
 }
