@@ -63,15 +63,40 @@ public class AuthServiceImpl implements AuthService {
             throw new DuplicateEmailException(request.getEmail());
         }
 
-        Company company = companyRepository.findById(request.getCompanyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
+        Company company;
+        boolean isAdmin = Boolean.TRUE.equals(request.getIsCompany()) 
+                || (request.getCompanyName() != null && !request.getCompanyName().isBlank());
+
+        if (isAdmin) {
+            // Registering as a Company -> create new Company and assign ADMIN role
+            Company newCompany = new Company();
+            String name = (request.getCompanyName() != null && !request.getCompanyName().isBlank()) 
+                    ? request.getCompanyName().trim() 
+                    : request.getFullName().trim() + "'s Organization";
+            newCompany.setCompanyName(name);
+            newCompany.setSubscriptionPlan("pro");
+            newCompany.setCreatedAt(OffsetDateTime.now());
+            company = companyRepository.save(newCompany);
+        } else if (request.getCompanyId() != null) {
+            // Joining an existing company by ID
+            company = companyRepository.findById(request.getCompanyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
+        } else {
+            // Individual signup -> associate with default or personal workspace
+            company = companyRepository.findById(1).orElseGet(() -> {
+                Company defaultCompany = new Company(request.getFullName().trim() + "'s Workspace", "free");
+                defaultCompany.setCreatedAt(OffsetDateTime.now());
+                return companyRepository.save(defaultCompany);
+            });
+        }
 
         User user = new User();
         user.setEmail(request.getEmail());
         user.setFullName(request.getFullName());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setCompany(company);
-        user.setSystemRoleEnum(SystemRole.MEMBER);
+        user.setSystemRoleEnum(isAdmin ? SystemRole.ADMIN : SystemRole.MEMBER);
+        user.setCreatedAt(OffsetDateTime.now());
 
         User savedUser = userRepository.save(user);
         String token = jwtService.generateToken(savedUser);

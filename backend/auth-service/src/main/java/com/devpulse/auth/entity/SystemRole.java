@@ -9,7 +9,9 @@ package com.devpulse.auth.entity;
  */
 public enum SystemRole {
     ADMIN,
-    MEMBER;
+    MEMBER,
+    DEVELOPER,
+    MANAGER;
 
     /**
      * Returns the lowercase value used in the database CHECK constraint.
