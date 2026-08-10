@@ -1,5 +1,6 @@
 package com.devpulse.integration.controller;
 
+import com.devpulse.contracts.events.AlertPrHighRiskEvent;
 import com.devpulse.contracts.events.BaseEvent;
 import com.devpulse.integration.entity.RawEventLog;
 import com.devpulse.integration.github.GithubSignatureValidator;
@@ -12,7 +13,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Controller receiving raw external webhooks from GitHub and Jira,
