@@ -16,7 +16,7 @@ spring:
       routes:
         
         - id: auth-service
-          uri: http://auth-service:8081
+          uri: ${AUTH_SERVICE_URI:http://localhost:8081}
           predicates:
             - Path=/api/auth/**,/api/users/**
           filters:
