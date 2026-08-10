@@ -3,10 +3,12 @@ package com.devpulse.notification.service;
 import com.devpulse.contracts.events.AlertPrHighRiskEvent;
 import com.devpulse.contracts.events.BaseEvent;
 import com.devpulse.contracts.events.PrOpenedEvent;
+import com.devpulse.notification.email.EmailNotificationService;
 import com.devpulse.notification.entity.Alert;
 import com.devpulse.notification.entity.Notification;
 import com.devpulse.notification.repository.AlertRepository;
 import com.devpulse.notification.repository.NotificationRepository;
+import com.devpulse.notification.slack.SlackNotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -22,11 +24,17 @@ public class NotificationEventListener {
 
     private final AlertRepository alertRepository;
     private final NotificationRepository notificationRepository;
+    private final SlackNotificationService slackNotificationService;
+    private final EmailNotificationService emailNotificationService;
 
     public NotificationEventListener(AlertRepository alertRepository,
-                                     NotificationRepository notificationRepository) {
+                                     NotificationRepository notificationRepository,
+                                     SlackNotificationService slackNotificationService,
+                                     EmailNotificationService emailNotificationService) {
         this.alertRepository = alertRepository;
         this.notificationRepository = notificationRepository;
+        this.slackNotificationService = slackNotificationService;
+        this.emailNotificationService = emailNotificationService;
     }
 
     @RabbitListener(queues = "${devpulse.rabbitmq.queue.notification:notification.events}")
@@ -60,13 +68,16 @@ public class NotificationEventListener {
         );
         alert = alertRepository.save(alert);
 
-        // 2. Create and save Notification record for Slack channel delivery
+        // 2. Dispatch Slack notification
+        boolean slackSuccess = slackNotificationService.sendSlackNotification("#dev-alerts", message);
+
+        // 3. Create and save Notification record for Slack channel delivery
         Notification notification = new Notification(
                 event.getCompanyId(),
                 alert.getAlertId(),
                 null,
                 "slack",
-                "sent"
+                slackSuccess ? "sent" : "failed"
         );
         notificationRepository.save(notification);
 
