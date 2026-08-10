@@ -5,6 +5,12 @@ spring:
   application:
     name: api-gateway
 
+  # Backs the rate limiter. Counters must be shared: with in-memory state, two gateway
+  # instances would each see half the traffic and the effective limit would double.
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+
   cloud:
     gateway:
       routes:
@@ -15,6 +21,12 @@ spring:
             - Path=/api/auth/**,/api/users/**
           filters:
             - StripPrefix=1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@userKeyResolver}"
+                redis-rate-limiter.replenishRate: 10    # sustained requests/second
+                redis-rate-limiter.burstCapacity: 20    # short spikes allowed up to this
+                redis-rate-limiter.requestedTokens: 1
 
         #add these as other services come online
         # - id: metrics-service
