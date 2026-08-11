@@ -84,8 +84,8 @@ devpulse:
 management:
   endpoints:
     web:
-      exposure:server:
-  port: ${SERVER_PORT:8080}
+      exposure:
+        include: health,info
 
 logging:
   level:

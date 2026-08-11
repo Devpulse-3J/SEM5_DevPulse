@@ -116,6 +116,14 @@ services:
       SERVER_PORT: 8080
       JWT_SECRET: ${JWT_SECRET:-change-me}
       REDIS_URL: redis://redis:6379
+      # Route targets. application.yml defaults these to localhost, which is correct
+      # for a native run but points the gateway at ITSELF inside a container — every
+      # proxied call then fails with "Connection refused: localhost/127.0.0.1:<port>".
+      AUTH_SERVICE_URI: http://auth-service:8081
+      INTEGRATION_SERVICE_URI: http://integration-service:8082
+      METRICS_SERVICE_URI: http://metrics-service:8083
+      NOTIFICATION_SERVICE_URI: http://notification-service:8084
+      ANALYTICS_SERVICE_URI: http://analytics-service:8000
     ports:
       - "8080:8080"
 
