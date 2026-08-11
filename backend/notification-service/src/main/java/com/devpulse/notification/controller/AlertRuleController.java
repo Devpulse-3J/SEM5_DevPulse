@@ -9,7 +9,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/alerts/rules")
+// api-gateway owns the public /api prefix and removes it before forwarding.
+@RequestMapping("/alerts/rules")
 public class AlertRuleController {
 
     private final AlertRuleService alertRuleService;
