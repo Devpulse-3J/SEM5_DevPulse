@@ -36,19 +36,19 @@ spring:
         #   filters:
         #     - StripPrefix=1
 
-        #: integration-service
-        #   uri: http://integration-service:8082
-        #   predicates:
-        #     - Path=/api/webhooks/**,/api/integrations/**
-        #   filters:
-        #     - StripPrefix=1
+        - id : integration-service
+          uri: http://integration-service:8082
+          predicates:
+            - Path=/api/webhooks/**,/api/integrations/**
+          filters:
+            - StripPrefix=1
 
-        #: notification-service
-        #   uri: http://notification-service:8084
-        #   predicates:
-        #     - Path=/api/alerts/**,/api/notifications/**
-        #   filters:
-        #     - StripPrefix=1
+        - id : notification-service
+          uri: http://notification-service:8084
+          predicates:
+             - Path=/api/alerts/**,/api/notifications/**
+          filters:
+             - StripPrefix=1
 
         # : analytics-service
         #   uri: http://analytics-service:8000
