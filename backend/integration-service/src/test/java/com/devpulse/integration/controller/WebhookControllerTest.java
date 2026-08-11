@@ -2,9 +2,14 @@ package com.devpulse.integration.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.devpulse.contracts.events.BaseEvent;
+import com.devpulse.integration.entity.JiraIssue;
 import com.devpulse.integration.entity.RawEventLog;
+import com.devpulse.integration.entity.Repo;
 import com.devpulse.integration.github.GithubSignatureValidator;
+import com.devpulse.integration.jira.JiraSignatureValidator;
+import com.devpulse.integration.repository.JiraIssueRepository;
 import com.devpulse.integration.repository.RawEventLogRepository;
+import com.devpulse.integration.repository.RepoRepository;
 import com.devpulse.integration.service.EventPublisherService;
 import com.devpulse.integration.service.WebhookEventNormalizer;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,38 +24,60 @@ import static org.mockito.Mockito.*;
 public class WebhookControllerTest {
 
     private RawEventLogRepository rawEventLogRepository;
-    private GithubSignatureValidator stubValidator;
+    private RepoRepository repoRepository;
+    private JiraIssueRepository jiraIssueRepository;
+    private GithubSignatureValidator stubGithubValidator;
+    private JiraSignatureValidator stubJiraValidator;
     private WebhookEventNormalizer normalizer;
     private EventPublisherService eventPublisherService;
     private WebhookController controller;
-    private boolean signatureResult = true;
+    private boolean githubSignatureResult = true;
+    private boolean jiraSignatureResult = true;
 
     @BeforeEach
     public void setUp() {
         rawEventLogRepository = mock(RawEventLogRepository.class);
+        repoRepository = mock(RepoRepository.class);
+        jiraIssueRepository = mock(JiraIssueRepository.class);
         eventPublisherService = mock(EventPublisherService.class);
         normalizer = new WebhookEventNormalizer(new ObjectMapper());
-        
-        stubValidator = new GithubSignatureValidator() {
+
+        stubGithubValidator = new GithubSignatureValidator() {
             @Override
             public boolean isValidSignature(String payload, String signatureHeader) {
-                return signatureResult;
+                return githubSignatureResult;
             }
         };
 
-        controller = new WebhookController(rawEventLogRepository, stubValidator, normalizer, eventPublisherService);
+        stubJiraValidator = new JiraSignatureValidator() {
+            @Override
+            public boolean isValidSignature(String payload, String signatureHeader) {
+                return jiraSignatureResult;
+            }
+        };
+
+        controller = new WebhookController(
+                rawEventLogRepository,
+                repoRepository,
+                jiraIssueRepository,
+                stubGithubValidator,
+                stubJiraValidator,
+                normalizer,
+                eventPublisherService,
+                new ObjectMapper()
+        );
     }
 
     @Test
     public void testHandleGithubWebhookSuccess() {
-        signatureResult = true;
+        githubSignatureResult = true;
         when(rawEventLogRepository.save(any())).thenAnswer(invocation -> {
             RawEventLog log = invocation.getArgument(0);
             log.setEventId(1);
             return log;
         });
 
-        String githubJson = "{\"action\":\"opened\",\"pull_request\":{\"id\":101,\"number\":5,\"title\":\"Test PR\"}}";
+        String githubJson = "{\"action\":\"opened\",\"repository\":{\"id\":500,\"name\":\"demo-repo\",\"owner\":{\"login\":\"devpulse-org\"},\"full_name\":\"devpulse-org/demo-repo\"},\"pull_request\":{\"id\":101,\"number\":5,\"title\":\"Test PR\"}}";
 
         ResponseEntity<?> response = controller.handleGithubWebhook(
                 githubJson, "pull_request", "sha256=valid", 1
@@ -58,12 +85,13 @@ public class WebhookControllerTest {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(rawEventLogRepository, times(1)).save(any(RawEventLog.class));
+        verify(repoRepository, times(1)).save(any(Repo.class));
         verify(eventPublisherService, times(1)).publishEvent(any(BaseEvent.class));
     }
 
     @Test
     public void testHandleGithubWebhookInvalidSignature() {
-        signatureResult = false;
+        githubSignatureResult = false;
 
         ResponseEntity<?> response = controller.handleGithubWebhook(
                 "{\"action\":\"opened\"}", "pull_request", "sha256=invalid", 1
@@ -71,25 +99,43 @@ public class WebhookControllerTest {
 
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
         verify(rawEventLogRepository, never()).save(any());
+        verify(repoRepository, never()).save(any());
         verify(eventPublisherService, never()).publishEvent(any());
     }
 
     @Test
     public void testHandleJiraWebhookSuccess() {
+        jiraSignatureResult = true;
         when(rawEventLogRepository.save(any())).thenAnswer(invocation -> {
             RawEventLog log = invocation.getArgument(0);
             log.setEventId(2);
             return log;
         });
 
-        String jiraJson = "{\"issue\":{\"id\":200,\"key\":\"DEV-42\",\"fields\":{\"summary\":\"Fix bug\"}}}";
+        String jiraJson = "{\"issue\":{\"id\":200,\"key\":\"DEV-42\",\"fields\":{\"summary\":\"Fix bug\",\"status\":{\"name\":\"In Progress\"}}}}";
 
         ResponseEntity<?> response = controller.handleJiraWebhook(
-                jiraJson, "jira:issue_updated", 1
+                jiraJson, "jira:issue_updated", null, 1
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(rawEventLogRepository, times(1)).save(any(RawEventLog.class));
+        verify(jiraIssueRepository, times(1)).save(any(JiraIssue.class));
         verify(eventPublisherService, times(1)).publishEvent(any(BaseEvent.class));
     }
+
+    @Test
+    public void testHandleJiraWebhookInvalidSignature() {
+        jiraSignatureResult = false;
+
+        ResponseEntity<?> response = controller.handleJiraWebhook(
+                "{}", "jira:issue_updated", "wrong-sig", 1
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        verify(rawEventLogRepository, never()).save(any());
+        verify(jiraIssueRepository, never()).save(any());
+        verify(eventPublisherService, never()).publishEvent(any());
+    }
 }
+
