@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 try:
     import joblib
@@ -53,9 +54,29 @@ LABELS = ["Low", "Medium", "High"]
 # Columns that either ARE the label, are derived from it, or are only knowable
 # after the PR was resolved. Training on these produces a model that looks
 # excellent and is worthless in production.
+#
+# SAFE vs LEAKY temporal features — the distinction is NOT simply "measured
+# from now":
+#
+#   safe   a value a live PR would genuinely have at scoring time, that was
+#          not used to build the label.
+#   leaky  anything the label was derived from, or anything only observable
+#          once the PR already ended.
+#
+# time_since_last_activity (now - updated_at)
+#   Safe for OPEN PRs: real idle time, exactly what you would compute in
+#   production. For CLOSED PRs updated_at freezes at close, so the column
+#   silently becomes "how long ago did this PR end" — an artefact of when the
+#   snapshot was taken, not a property of the PR.
+#
+# time_since_created (now - created_at)
+#   Safe for CLOSED PRs. For OPEN PRs it is the label: resolution_days is
+#   defined as (resolved_at or now) - created_at, which for an open PR is
+#   exactly now - created_at. Same arithmetic, same number. Including it lets
+#   the model read the answer instead of predicting it, which inflates every
+#   score below without improving a single real prediction.
 LEAKY = [
     "resolution_days",      # the label is a bucketing of this column
-    "time_since_activity",  # measured at close time for resolved PRs
     "state",
     "is_merged",
     "is_open",
@@ -166,9 +187,14 @@ def build_pipeline(X: pd.DataFrame, algorithm: str, n_classes: int) -> Pipeline:
             X[col] = X[col].astype(int)
 
     # Trees are scale-invariant; logistic regression is not.
-    numeric_steps = [("impute", SimpleImputer(strategy="median"))]
+    # Annotated because the steps are deliberately heterogeneous: without it a
+    # type checker infers list[tuple[str, SimpleImputer]] from the first entry
+    # and then rejects appending the StandardScaler below.
+    numeric_steps: list[tuple[str, Any]] = [
+        ("impute", SimpleImputer(strategy="median"))
+    ]
     if algorithm == "logistic_regression":
-        numeric_steps.append(("scale", StandardScaler(with_mean=False)))
+        numeric_steps.append(("scale", StandardScaler()))
 
     pre = ColumnTransformer(
         [

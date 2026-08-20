@@ -284,6 +284,17 @@ def build_features(prs: list[dict], repo: str, with_details: bool) -> pd.DataFra
         # been sitting open so far.
         resolution_days = _days_between(resolved_at or now, created)
 
+        # --- temporal features measured from NOW (never from a future event) ---
+        # Both are knowable at prediction time for a live PR, which is what
+        # makes them usable as inputs.
+        #
+        # CAUTION, time_since_created: for an OPEN PR, resolution_days above is
+        # itself (now - created), so this column and the label are the same
+        # quantity. On open rows it does not predict staleness — it *is*
+        # staleness, restated. See the leakage note in train_model.py.
+        time_since_created = (now - created).days if created else None
+        time_since_last_activity = (now - updated).days if updated else None
+
         additions = pr.get("additions")
         deletions = pr.get("deletions")
         pr_size = (
@@ -309,6 +320,9 @@ def build_features(prs: list[dict], repo: str, with_details: bool) -> pd.DataFra
                 "num_labels": len(pr.get("labels") or []),
                 "num_requested_reviewers": len(pr.get("requested_reviewers") or []),
                 "base_branch": (pr.get("base") or {}).get("ref"),
+                # --- temporal, measured from now ---
+                "time_since_created": time_since_created,
+                "time_since_last_activity": time_since_last_activity,
                 "created_hour": created.hour if created else None,
                 "created_weekday": created.weekday() if created else None,
                 # --- activity signals ---
