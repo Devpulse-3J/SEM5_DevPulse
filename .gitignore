@@ -58,3 +58,5 @@ coverage/
 
 
 CLAUDE.md
+
+*.pem
