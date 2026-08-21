@@ -42,6 +42,13 @@ public class ProjectMember {
     public ProjectMember() {
     }
 
+    public ProjectMember(Integer projectId, Integer userId, String role) {
+        this.projectId = projectId;
+        this.userId = userId;
+        this.role = role != null ? role : "developer";
+        this.joinedAt = OffsetDateTime.now();
+    }
+
     // -- getters / setters ---------------------------------------------------
 
     public Integer getMembershipId() {

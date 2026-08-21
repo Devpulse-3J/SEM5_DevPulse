@@ -26,7 +26,8 @@ import java.util.UUID;
 
 /**
  * Controller receiving raw external webhooks from GitHub and Jira,
- * validating signatures, persisting raw logs & domain entities (repos, jira_issues),
+ * validating signatures, persisting raw logs & domain entities (repos,
+ * jira_issues),
  * normalizing into canonical events, and publishing events to RabbitMQ.
  */
 @RestController
@@ -45,13 +46,13 @@ public class WebhookController {
     private final ObjectMapper objectMapper;
 
     public WebhookController(RawEventLogRepository rawEventLogRepository,
-                             RepoRepository repoRepository,
-                             JiraIssueRepository jiraIssueRepository,
-                             GithubSignatureValidator githubSignatureValidator,
-                             JiraSignatureValidator jiraSignatureValidator,
-                             WebhookEventNormalizer normalizer,
-                             EventPublisherService eventPublisherService,
-                             ObjectMapper objectMapper) {
+            RepoRepository repoRepository,
+            JiraIssueRepository jiraIssueRepository,
+            GithubSignatureValidator githubSignatureValidator,
+            JiraSignatureValidator jiraSignatureValidator,
+            WebhookEventNormalizer normalizer,
+            EventPublisherService eventPublisherService,
+            ObjectMapper objectMapper) {
         this.rawEventLogRepository = rawEventLogRepository;
         this.repoRepository = repoRepository;
         this.jiraIssueRepository = jiraIssueRepository;
@@ -94,8 +95,7 @@ public class WebhookController {
         return ResponseEntity.ok(Map.of(
                 "status", "success",
                 "message", "GitHub webhook received, normalized, and published",
-                "eventId", rawLog.getEventId()
-        ));
+                "eventId", rawLog.getEventId()));
     }
 
     @PostMapping("/jira")
@@ -130,8 +130,7 @@ public class WebhookController {
         return ResponseEntity.ok(Map.of(
                 "status", "success",
                 "message", "Jira webhook received, normalized, and published",
-                "eventId", rawLog.getEventId()
-        ));
+                "eventId", rawLog.getEventId()));
     }
 
     @PostMapping("/test-high-risk-alert")
@@ -139,8 +138,7 @@ public class WebhookController {
         AlertPrHighRiskEvent alertEvent = new AlertPrHighRiskEvent(
                 UUID.randomUUID().toString(),
                 1, 1, Instant.now(),
-                100, 105, "random_forest", "v1.0", "critical", 0.92, 0.95, Instant.now()
-        );
+                100, 105, "random_forest", "v1.0", "critical", 0.92, 0.95, Instant.now());
         eventPublisherService.publishEvent(alertEvent);
         return ResponseEntity.ok(Map.of("status", "success", "message", "High risk alert published to RabbitMQ"));
     }
@@ -153,13 +151,15 @@ public class WebhookController {
                 Long githubRepoId = repoNode.path("id").asLong(0L);
                 if (githubRepoId > 0) {
                     String repoName = repoNode.path("name").asText("unknown-repo");
-                    String ownerName = repoNode.path("owner").path("login").asText(repoNode.path("owner").path("name").asText("unknown-owner"));
+                    String ownerName = repoNode.path("owner").path("login")
+                            .asText(repoNode.path("owner").path("name").asText("unknown-owner"));
                     String fullName = repoNode.path("full_name").asText(ownerName + "/" + repoName);
                     String defaultBranch = repoNode.path("default_branch").asText("main");
-                    Integer projectId = repoNode.path("id").asInt(1);
+                    Integer projectId = null;
 
                     Repo repo = repoRepository.findByCompanyIdAndGithubRepoId(companyId, githubRepoId)
-                            .orElseGet(() -> new Repo(companyId, projectId, githubRepoId, repoName, ownerName, fullName, defaultBranch));
+                            .orElseGet(() -> new Repo(companyId, projectId, githubRepoId, repoName, ownerName, fullName,
+                                    defaultBranch));
 
                     repo.setRepoName(repoName);
                     repo.setOwnerName(ownerName);
@@ -193,7 +193,8 @@ public class WebhookController {
                 Integer projectId = 1;
 
                 JiraIssue jiraIssue = jiraIssueRepository.findByCompanyIdAndJiraKey(companyId, jiraKey)
-                        .orElseGet(() -> new JiraIssue(companyId, projectId, jiraKey, summary, issueType, priority, status, storyPoints, assigneeId));
+                        .orElseGet(() -> new JiraIssue(companyId, projectId, jiraKey, summary, issueType, priority,
+                                status, storyPoints, assigneeId));
 
                 jiraIssue.setSummary(summary);
                 jiraIssue.setIssueType(issueType);
@@ -202,7 +203,8 @@ public class WebhookController {
                 jiraIssue.setStoryPoints(storyPoints);
                 jiraIssue.setAssigneeId(assigneeId);
 
-                if ("Done".equalsIgnoreCase(status) || "Closed".equalsIgnoreCase(status) || "Resolved".equalsIgnoreCase(status)) {
+                if ("Done".equalsIgnoreCase(status) || "Closed".equalsIgnoreCase(status)
+                        || "Resolved".equalsIgnoreCase(status)) {
                     jiraIssue.setClosedAt(Instant.now());
                 }
 
@@ -213,4 +215,3 @@ public class WebhookController {
         }
     }
 }
-

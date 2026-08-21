@@ -27,3 +27,12 @@ management:
     web:
       exposure:
         include: health,info
+
+github:
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET:devpulse-integration-service}
+  app:
+    id: ${GITHUB_APP_ID:4560226}
+    client-id: ${GITHUB_CLIENT_ID:Iv23liIi2EoqEq8cplUa}
+    client-secret: ${GITHUB_CLIENT_SECRET:1df4005d751829ffd0efafa44116bbe09f1bb257}
+    private-key-path: ${GITHUB_PRIVATE_KEY_PATH:classpath:github-private-key.pem}
