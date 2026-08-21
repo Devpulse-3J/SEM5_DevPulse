@@ -28,13 +28,12 @@ spring:
                 redis-rate-limiter.burstCapacity: 20    # short spikes allowed up to this
                 redis-rate-limiter.requestedTokens: 1
 
-        #add these as other services come online
-        # - id: metrics-service
-        #   uri: http://metrics-service:8083
-        #   predicates:
-        #     - Path=/api/metrics/**
-        #   filters:
-        #     - StripPrefix=1
+        - id: metrics-service
+          uri: ${METRICS_SERVICE_URI:http://localhost:8083}
+          predicates:
+            - Path=/api/metrics/**
+          filters:
+            - StripPrefix=1
 
         - id : integration-service
           uri: http://integration-service:8082
