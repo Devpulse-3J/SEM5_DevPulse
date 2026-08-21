@@ -66,6 +66,21 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- @WithMockUser and friends, for testing the security rules without
+         weakening the production SecurityConfig. -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Test scope only. Lets @SpringBootTest bring up the JPA context without
+         a live Postgres; production still runs on Postgres with Flyway owning
+         the schema. See src/test/resources/application.yml. -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

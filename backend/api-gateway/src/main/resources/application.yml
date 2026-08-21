@@ -82,6 +82,15 @@ devpulse:
       prefix: "Bearer "
 
 management:
+  endpoint:
+    health:
+      # Needed so /actuator/health names WHICH component is down
+      # (db, rabbit, redis) instead of only an aggregate status.
+      show-details: always
+  info:
+    env:
+      # Required for the info.* properties below to appear on /actuator/info.
+      enabled: true
   endpoints:
   
     web:
@@ -92,3 +101,10 @@ logging:
   level:
     org.springframework.cloud.gateway: INFO
     com.devpulse.gateway: DEBUG
+
+# Surfaced at GET /actuator/info.
+info:
+  app:
+    name: api-gateway
+    description: 'Sole public entry point: routing, edge JWT authentication and rate limiting. No database.'
+    version: '@project.version@'
