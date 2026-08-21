@@ -31,7 +31,7 @@ class AlertRuleControllerTest {
         AlertRule rule = new AlertRule(1, 10, "stale_pr", 48, "#dev-alerts", 1);
         when(alertRuleService.getRulesByCompany(1)).thenReturn(List.of(rule));
 
-        mockMvc.perform(get("/api/alerts/rules?companyId=1"))
+        mockMvc.perform(get("/alerts/rules?companyId=1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].ruleType").value("stale_pr"));
     }
@@ -41,7 +41,7 @@ class AlertRuleControllerTest {
         AlertRule rule = new AlertRule(1, 10, "stale_pr", 48, "#dev-alerts", 1);
         when(alertRuleService.getRuleById(1)).thenReturn(Optional.of(rule));
 
-        mockMvc.perform(get("/api/alerts/rules/1"))
+        mockMvc.perform(get("/alerts/rules/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ruleType").value("stale_pr"));
     }
@@ -62,7 +62,7 @@ class AlertRuleControllerTest {
             }
             """;
 
-        mockMvc.perform(post("/api/alerts/rules")
+        mockMvc.perform(post("/alerts/rules")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonBody))
                 .andExpect(status().isCreated())
