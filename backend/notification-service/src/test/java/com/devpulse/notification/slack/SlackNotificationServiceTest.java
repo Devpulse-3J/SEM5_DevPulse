@@ -20,11 +20,20 @@ class SlackNotificationServiceTest {
         restTemplate = mock(RestTemplate.class);
     }
 
+    /**
+     * With no bot token and no webhook URL, delivery must report failure.
+     *
+     * <p>This previously asserted {@code true} — the service logged
+     * "Simulating successful delivery" and returned success. That caused every
+     * row in the {@code notifications} table to be written with status 'sent'
+     * for a message that never left the process, so the delivery log recorded
+     * deliveries that never happened.
+     */
     @Test
-    void testSendSlackNotificationSimulatedSuccessWhenUnconfigured() {
+    void testSendSlackNotificationFailsWhenUnconfigured() {
         SlackNotificationService slackService = new SlackNotificationService(restTemplate, new ObjectMapper(), "", "");
         boolean result = slackService.sendSlackNotification("#dev-alerts", "Test alert message");
-        assertTrue(result);
+        assertFalse(result);
         verifyNoInteractions(restTemplate);
     }
 

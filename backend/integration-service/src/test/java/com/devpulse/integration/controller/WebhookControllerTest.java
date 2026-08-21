@@ -114,14 +114,57 @@ public class WebhookControllerTest {
 
         String jiraJson = "{\"issue\":{\"id\":200,\"key\":\"DEV-42\",\"fields\":{\"summary\":\"Fix bug\",\"status\":{\"name\":\"In Progress\"}}}}";
 
+        // A signature must now be present. This previously passed null, which
+        // the controller treated as "nothing to verify" and accepted.
         ResponseEntity<?> response = controller.handleJiraWebhook(
-                jiraJson, "jira:issue_updated", null, 1
+                jiraJson, "jira:issue_updated", "sha256=valid", 1
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(rawEventLogRepository, times(1)).save(any(RawEventLog.class));
         verify(jiraIssueRepository, times(1)).save(any(JiraIssue.class));
         verify(eventPublisherService, times(1)).publishEvent(any(BaseEvent.class));
+    }
+
+    /**
+     * An unsigned webhook must be rejected outright. /api/webhooks/** is a
+     * public path at the gateway, so the HMAC is the only authentication —
+     * accepting a request with no signature header let anyone write to
+     * raw_event_log and publish events onto RabbitMQ.
+     */
+    @Test
+    public void testHandleGithubWebhookMissingSignatureIsRejected() {
+        ResponseEntity<?> response = controller.handleGithubWebhook(
+                "{\"action\":\"opened\"}", "pull_request", null, 1
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        verify(rawEventLogRepository, never()).save(any());
+        verify(repoRepository, never()).save(any());
+        verify(eventPublisherService, never()).publishEvent(any());
+    }
+
+    @Test
+    public void testHandleJiraWebhookMissingSignatureIsRejected() {
+        ResponseEntity<?> response = controller.handleJiraWebhook(
+                "{\"issue\":{\"key\":\"DEV-1\"}}", "jira:issue_updated", null, 1
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        verify(rawEventLogRepository, never()).save(any());
+        verify(jiraIssueRepository, never()).save(any());
+        verify(eventPublisherService, never()).publishEvent(any());
+    }
+
+    /** A blank header is as good as no header. */
+    @Test
+    public void testHandleGithubWebhookBlankSignatureIsRejected() {
+        ResponseEntity<?> response = controller.handleGithubWebhook(
+                "{\"action\":\"opened\"}", "pull_request", "   ", 1
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        verify(rawEventLogRepository, never()).save(any());
     }
 
     @Test

@@ -16,7 +16,10 @@ import java.util.*;
  * and dynamic channel listing for UI selection.
  */
 @RestController
-@RequestMapping("/api/slack")
+// No "/api" prefix — the gateway strips it (StripPrefix=1) before forwarding.
+// A matching /api/slack/** route must also exist in the gateway config, or
+// these endpoints are unreachable from the frontend.
+@RequestMapping("/slack")
 public class SlackOAuthController {
 
     private static final Logger log = LoggerFactory.getLogger(SlackOAuthController.class);
@@ -26,7 +29,13 @@ public class SlackOAuthController {
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
-    private String botToken;
+
+    // Read-only. This used to be a mutable field assigned during the OAuth
+    // callback, which made it shared state on a singleton bean: whichever
+    // company installed last overwrote every other company's token, and the
+    // value was lost on restart. A token obtained by OAuth must be stored
+    // per-company in the `integrations` table, not held here.
+    private final String botToken;
 
     public SlackOAuthController(
             RestTemplate restTemplate,
@@ -86,14 +95,19 @@ public class SlackOAuthController {
                     String accessToken = root.path("access_token").asText(null);
                     String teamName = root.path("team").path("name").asText("Slack Workspace");
                     if (accessToken != null) {
-                        this.botToken = accessToken;
-                        log.info("Successfully authorized Slack OAuth for team: {}", teamName);
+                        // The token is deliberately NOT stored on this bean and NOT
+                        // returned to the caller. Persisting it belongs in the
+                        // `integrations` table, keyed by company — see the TODO on
+                        // this class. Until that exists, the install completes but
+                        // the token is not retained.
+                        log.info("Slack OAuth exchange succeeded for team: {}. Token not persisted "
+                                + "— per-company storage in `integrations` is not implemented yet.",
+                                teamName);
                     }
                     return ResponseEntity.ok(Map.of(
                             "status", "success",
                             "message", "Slack workspace authorized successfully",
-                            "teamName", teamName,
-                            "botToken", accessToken != null ? accessToken : ""
+                            "teamName", teamName
                     ));
                 } else {
                     String error = root.path("error").asText("oauth_failed");

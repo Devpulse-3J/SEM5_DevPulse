@@ -1,6 +1,5 @@
 package com.devpulse.integration.controller;
 
-import com.devpulse.contracts.events.AlertPrHighRiskEvent;
 import com.devpulse.contracts.events.BaseEvent;
 import com.devpulse.integration.entity.JiraIssue;
 import com.devpulse.integration.entity.RawEventLog;
@@ -22,7 +21,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Controller receiving raw external webhooks from GitHub and Jira,
@@ -72,8 +70,16 @@ public class WebhookController {
 
         log.info("Received GitHub webhook event: {}, companyId: {}", eventType, companyId);
 
-        // Verify HMAC signature if provided
-        if (signature != null && !githubSignatureValidator.isValidSignature(payload, signature)) {
+        // HMAC is MANDATORY. /api/webhooks/** is a public path at the gateway —
+        // no JWT is checked — so the signature is the only thing separating a
+        // genuine GitHub delivery from an anonymous forgery. Treating a missing
+        // header as "nothing to verify" let unsigned requests through.
+        if (signature == null || signature.isBlank()) {
+            log.warn("Rejected GitHub webhook with no X-Hub-Signature-256 header, event: {}", eventType);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Missing webhook signature"));
+        }
+        if (!githubSignatureValidator.isValidSignature(payload, signature)) {
             log.warn("Invalid GitHub webhook signature received for event: {}", eventType);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Invalid webhook signature"));
@@ -107,8 +113,14 @@ public class WebhookController {
 
         log.info("Received Jira webhook event: {}, companyId: {}", eventType, companyId);
 
-        // Verify signature if header present
-        if (signature != null && !jiraSignatureValidator.isValidSignature(payload, signature)) {
+        // Mandatory, for the same reason as the GitHub handler above: this path
+        // is public at the gateway, so the HMAC is the only authentication.
+        if (signature == null || signature.isBlank()) {
+            log.warn("Rejected Jira webhook with no X-Jira-Signature header, event: {}", eventType);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Missing webhook signature"));
+        }
+        if (!jiraSignatureValidator.isValidSignature(payload, signature)) {
             log.warn("Invalid Jira webhook signature received for event: {}", eventType);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Invalid webhook signature"));
@@ -131,16 +143,6 @@ public class WebhookController {
                 "status", "success",
                 "message", "Jira webhook received, normalized, and published",
                 "eventId", rawLog.getEventId()));
-    }
-
-    @PostMapping("/test-high-risk-alert")
-    public ResponseEntity<?> testHighRiskAlert() {
-        AlertPrHighRiskEvent alertEvent = new AlertPrHighRiskEvent(
-                UUID.randomUUID().toString(),
-                1, 1, Instant.now(),
-                100, 105, "random_forest", "v1.0", "critical", 0.92, 0.95, Instant.now());
-        eventPublisherService.publishEvent(alertEvent);
-        return ResponseEntity.ok(Map.of("status", "success", "message", "High risk alert published to RabbitMQ"));
     }
 
     private void saveOrUpdateRepo(Integer companyId, String payload) {

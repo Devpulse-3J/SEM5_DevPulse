@@ -20,16 +20,26 @@ public class AlertRuleService {
         return alertRuleRepository.findByCompanyIdAndIsActiveTrue(companyId);
     }
 
-    public Optional<AlertRule> getRuleById(Integer ruleId) {
-        return alertRuleRepository.findById(ruleId);
+    /**
+     * Every lookup below is scoped to the caller's company. Using the bare
+     * {@code findById} here previously let any authenticated user read, delete
+     * or overwrite another tenant's rule by guessing a numeric id.
+     */
+    public Optional<AlertRule> getRuleById(Integer ruleId, Integer companyId) {
+        return alertRuleRepository.findByRuleIdAndCompanyId(ruleId, companyId);
     }
 
-    public AlertRule createRule(AlertRule rule) {
+    public AlertRule createRule(AlertRule rule, Integer companyId) {
+        // The company is taken from the authenticated request, never from the
+        // request body — otherwise a caller could create rules for a tenant
+        // they do not belong to.
+        rule.setCompanyId(companyId);
         return alertRuleRepository.save(rule);
     }
 
-    public boolean deleteRule(Integer ruleId) {
-        Optional<AlertRule> existing = alertRuleRepository.findById(ruleId);
+    public boolean deleteRule(Integer ruleId, Integer companyId) {
+        Optional<AlertRule> existing =
+                alertRuleRepository.findByRuleIdAndCompanyId(ruleId, companyId);
         if (existing.isPresent()) {
             AlertRule rule = existing.get();
             rule.setActive(false);

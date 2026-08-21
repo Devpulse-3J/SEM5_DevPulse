@@ -70,8 +70,13 @@ public class SlackNotificationService {
             return postToWebhook(defaultSlackWebhookUrl, message);
         }
 
-        log.info("Slack webhook/bot URL unconfigured. Simulating successful delivery to target '{}'", targetChannel);
-        return true;
+        // Return false, not true. Reporting success when nothing was sent wrote
+        // rows to the `notifications` table with status 'sent' for messages that
+        // never left the process — the delivery log claimed a delivery that did
+        // not happen, which is worse than a visible failure.
+        log.error("Slack is not configured (no bot token and no webhook URL). "
+                + "Alert for target '{}' was NOT delivered.", targetChannel);
+        return false;
     }
 
     private boolean postToWebhook(String webhookUrl, String message) {

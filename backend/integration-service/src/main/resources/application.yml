@@ -30,9 +30,15 @@ management:
 
 github:
   webhook:
-    secret: ${GITHUB_WEBHOOK_SECRET:devpulse-integration-service}
+    # No default: a webhook secret that falls back to a known constant is not a
+    # secret. The service must fail to start rather than validate signatures
+    # against a value that is published in this file.
+    secret: ${GITHUB_WEBHOOK_SECRET}
   app:
-    id: ${GITHUB_APP_ID:4560226}
-    client-id: ${GITHUB_CLIENT_ID:Iv23liIi2EoqEq8cplUa}
-    client-secret: ${GITHUB_CLIENT_SECRET:1df4005d751829ffd0efafa44116bbe09f1bb257}
+    # All GitHub App credentials come from the environment. They were previously
+    # committed here as literal defaults; those values are compromised and must
+    # be rotated in the GitHub App settings.
+    id: ${GITHUB_APP_ID:}
+    client-id: ${GITHUB_CLIENT_ID:}
+    client-secret: ${GITHUB_CLIENT_SECRET:}
     private-key-path: ${GITHUB_PRIVATE_KEY_PATH:classpath:github-private-key.pem}
