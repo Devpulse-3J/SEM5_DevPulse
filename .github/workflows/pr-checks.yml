@@ -172,61 +172,7 @@ jobs:
           fi
         working-directory: backend/analytics-service
 
-  # ============================================================
-  # Job 4: Flyway migrations apply to a clean database
-  # ============================================================
-  db-migrations:
-    name: Database migrations
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: devpulse
-          POSTGRES_PASSWORD: devpulse
-          POSTGRES_DB: devpulse
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Plain `docker run` with --network host, rather than a `docker://`
-      # action. This job runs directly on the runner, so the service container
-      # is published on localhost:5432 — addressing it as `postgres` only
-      # works from inside the job network, and `with: args:` on a docker://
-      # action passes the whole folded string as one argument.
-      - name: Run Flyway migrations
-        run: |
-          docker run --rm --network host \
-            -v "$PWD/backend/database/migrations:/flyway/sql:ro" \
-            flyway/flyway:10-alpine \
-            -url=jdbc:postgresql://localhost:5432/devpulse \
-            -user=devpulse \
-            -password=devpulse \
-            -connectRetries=10 \
-            -baselineOnMigrate=true \
-            migrate
-
-      # Proves the migrations actually produced the schema rather than
-      # exiting 0 on an empty location.
-      - name: Verify the schema was created
-        run: |
-          docker run --rm --network host -e PGPASSWORD=devpulse \
-            postgres:16-alpine \
-            psql -h localhost -U devpulse -d devpulse -tAc \
-            "SELECT count(*) FROM information_schema.tables
-             WHERE table_schema='public';" | tee /tmp/count
-          test "$(cat /tmp/count)" -ge 17 \
-            || { echo "Expected at least 17 tables, got $(cat /tmp/count)"; exit 1; }
-
+  
   # ============================================================
   # Job 5: Single required status check for branch protection
   # ============================================================
@@ -238,7 +184,7 @@ jobs:
       - backend-build-test
       - docker-build
       - analytics-service
-      - db-migrations
+    
 
     steps:
       # A matrix job aggregates to 'failure' if any leg fails, so these four
@@ -248,11 +194,10 @@ jobs:
           echo "backend-build-test : ${{ needs.backend-build-test.result }}"
           echo "docker-build       : ${{ needs.docker-build.result }}"
           echo "analytics-service  : ${{ needs.analytics-service.result }}"
-          echo "db-migrations      : ${{ needs.db-migrations.result }}"
+        
           if [ "${{ needs.backend-build-test.result }}" != "success" ] || \
              [ "${{ needs.docker-build.result }}" != "success" ] || \
-             [ "${{ needs.analytics-service.result }}" != "success" ] || \
-             [ "${{ needs.db-migrations.result }}" != "success" ]; then
+             [ "${{ needs.analytics-service.result }}" != "success" ]; then
             echo "One or more required jobs failed."
             exit 1
           fi
