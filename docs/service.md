@@ -69,6 +69,10 @@ and only this service changes.
 Consumes those normalised events and stores PRs, commits, and deployments. From that history it
 computes the four DORA metrics — deployment frequency, lead time, MTTR, change failure rate.
 
+Implementation details and formulas are documented in
+[metrics_service_implementation.md](metrics_service_implementation.md). Endpoint contracts and
+examples are in [metrics_service_api.md](metrics_service_api.md).
+
 This is where "how fast does this team ship?" gets answered. It is the main thing the dashboard
 reads.
 
