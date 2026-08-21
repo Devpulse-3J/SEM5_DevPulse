@@ -13,7 +13,10 @@ import java.util.Map;
  * synchronization with GitHub REST API.
  */
 @RestController
-@RequestMapping("/api/integrations/github")
+// No "/api" prefix: the gateway matches /api/integrations/** and applies
+// StripPrefix=1, so it forwards /integrations/github/sync. Mapping "/api/..."
+// here meant the forwarded path never matched and every call 404'd.
+@RequestMapping("/integrations/github")
 public class GithubSyncController {
 
     private static final Logger log = LoggerFactory.getLogger(GithubSyncController.class);

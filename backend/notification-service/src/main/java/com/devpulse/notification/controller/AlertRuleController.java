@@ -19,28 +19,41 @@ public class AlertRuleController {
         this.alertRuleService = alertRuleService;
     }
 
+    /**
+     * The tenant comes from {@code X-Company-Id}, which the API gateway strips
+     * from the incoming request and re-adds from validated JWT claims — so it
+     * cannot be forged by a client. It was previously a request parameter
+     * defaulting to 1, which let any caller read any company's rules with
+     * {@code ?companyId=N}.
+     */
     @GetMapping
-    public ResponseEntity<List<AlertRule>> getRules(@RequestParam(defaultValue = "1") Integer companyId) {
+    public ResponseEntity<List<AlertRule>> getRules(
+            @RequestHeader("X-Company-Id") Integer companyId) {
         List<AlertRule> rules = alertRuleService.getRulesByCompany(companyId);
         return ResponseEntity.ok(rules);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getRuleById(@PathVariable("id") Integer ruleId) {
-        return alertRuleService.getRuleById(ruleId)
+    public ResponseEntity<?> getRuleById(@PathVariable("id") Integer ruleId,
+                                         @RequestHeader("X-Company-Id") Integer companyId) {
+        // A rule belonging to another company returns 404, not 403: revealing
+        // that the id exists would itself leak information across tenants.
+        return alertRuleService.getRuleById(ruleId, companyId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<AlertRule> createRule(@RequestBody AlertRule rule) {
-        AlertRule created = alertRuleService.createRule(rule);
+    public ResponseEntity<AlertRule> createRule(@RequestBody AlertRule rule,
+                                                @RequestHeader("X-Company-Id") Integer companyId) {
+        AlertRule created = alertRuleService.createRule(rule, companyId);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteRule(@PathVariable("id") Integer ruleId) {
-        boolean deleted = alertRuleService.deleteRule(ruleId);
+    public ResponseEntity<?> deleteRule(@PathVariable("id") Integer ruleId,
+                                        @RequestHeader("X-Company-Id") Integer companyId) {
+        boolean deleted = alertRuleService.deleteRule(ruleId, companyId);
         if (deleted) {
             return ResponseEntity.noContent().build();
         }
