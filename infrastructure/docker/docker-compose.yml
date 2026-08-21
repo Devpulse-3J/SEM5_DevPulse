@@ -1,17 +1,28 @@
-# DevPulse — full local stack.
+# DevPulse — local stack.
 #
-# Database architecture: ONE shared PostgreSQL database (`devpulse`). It is an
-# infrastructure component, NOT a microservice — every backend service connects
-# to the same database. Its schema is applied by a single dedicated `flyway`
-# migration service (see backend/database/), never by the services themselves.
+# Database architecture: ONE shared PostgreSQL database. It is an infrastructure
+# component, NOT a microservice — every backend service connects to the same
+# database.
+#
+# >>> The database is now hosted on SUPABASE, not in this compose file. <<<
+# The `postgres` and `flyway` services below are COMMENTED OUT rather than
+# deleted, so a fully local stack can be restored by uncommenting them plus the
+# matching `depends_on` entries and the `volumes:` block at the bottom.
+#
+# This does NOT make backend/database/ obsolete. Those Flyway migrations are
+# still the single source of truth for the schema — they now run against
+# Supabase instead of a local container:
+#
+#   docker run --rm -v "$PWD/backend/database/migrations:/flyway/sql" \
+#     flyway/flyway:10-alpine -url="$SUPABASE_JDBC_URL" \
+#     -user="$SUPABASE_DB_USER" -password="$SUPABASE_DB_PASSWORD" \
+#     -baselineOnMigrate=true migrate
 #
 # Secrets come from a .env file next to this compose file — copy .env.example to
 # .env and fill it in. Never commit .env.
 #
-# Infra (postgres/redis/rabbitmq/flyway) runs today. The service containers each
-# require a Dockerfile in backend/<service>/, which does not exist yet — until
-# then, bring up only infra + migrations:
-#   docker compose up -d postgres redis rabbitmq flyway
+# Bring up the remaining local infra with:
+#   docker compose up -d redis rabbitmq
 
 name: devpulse
 
@@ -33,41 +44,41 @@ x-service-defaults: &service-defaults
 
 # ---- infrastructure --------------------------------------------------------
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: devpulse-postgres
-    restart: unless-stopped
-    networks: [devpulse]
-    environment:
-      <<: *postgres-env
-      POSTGRES_DB: ${POSTGRES_DB:-devpulse}   # the single shared database
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devpulse} -d ${POSTGRES_DB:-devpulse}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # postgres:
+    # image: postgres:16-alpine
+    # container_name: devpulse-postgres
+    # restart: unless-stopped
+    # networks: [devpulse]
+    # environment:
+      # <<: *postgres-env
+      # POSTGRES_DB: ${POSTGRES_DB:-devpulse}   # the single shared database
+    # ports:
+      # - "5432:5432"
+    # volumes:
+      # - pgdata:/var/lib/postgresql/data
+    # healthcheck:
+      # test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devpulse} -d ${POSTGRES_DB:-devpulse}"]
+      # interval: 10s
+      # timeout: 5s
+      # retries: 5
 
-  # The ONLY process that runs Flyway. Applies backend/database/migrations to the
-  # shared database, then exits. Services depend on it completing.
-  flyway:
-    image: flyway/flyway:10-alpine
-    container_name: devpulse-flyway
-    networks: [devpulse]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: -connectRetries=10 -baselineOnMigrate=true migrate
-    environment:
-      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
-      FLYWAY_USER: ${POSTGRES_USER:-devpulse}
-      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
-      FLYWAY_SCHEMAS: public
-    volumes:
-      - ../../backend/database/migrations:/flyway/sql:ro
+  # # The ONLY process that runs Flyway. Applies backend/database/migrations to the
+  # # shared database, then exits. Services depend on it completing.
+  # flyway:
+    # image: flyway/flyway:10-alpine
+    # container_name: devpulse-flyway
+    # networks: [devpulse]
+    # depends_on:
+      # postgres:
+        # condition: service_healthy
+    # command: -connectRetries=10 -baselineOnMigrate=true migrate
+    # environment:
+      # FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
+      # FLYWAY_USER: ${POSTGRES_USER:-devpulse}
+      # FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
+      # FLYWAY_SCHEMAS: public
+    # volumes:
+      # - ../../backend/database/migrations:/flyway/sql:ro
 
   redis:
     image: redis:7-alpine
@@ -134,8 +145,8 @@ services:
       dockerfile: auth-service/Dockerfile
     container_name: devpulse-auth-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     environment:
@@ -155,8 +166,8 @@ services:
       dockerfile: integration-service/Dockerfile
     container_name: devpulse-integration-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
       <<: [*postgres-env, *postgres-url, *rabbitmq-url]
@@ -177,8 +188,8 @@ services:
       dockerfile: metrics-service/Dockerfile
     container_name: devpulse-metrics-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
       <<: [*postgres-env, *postgres-url, *rabbitmq-url]
@@ -194,8 +205,8 @@ services:
       dockerfile: notification-service/Dockerfile
     container_name: devpulse-notification-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
       <<: [*postgres-env, *postgres-url, *rabbitmq-url]
@@ -214,8 +225,8 @@ services:
     build: ../../backend/analytics-service
     container_name: devpulse-analytics-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
       <<: [*postgres-env, *rabbitmq-url]
@@ -228,8 +239,8 @@ services:
     ports:
       - "8000:8000"
 
-volumes:
-  pgdata:
+# volumes:
+  # pgdata:
 
 networks:
   devpulse:
