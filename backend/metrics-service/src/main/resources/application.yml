@@ -12,10 +12,33 @@ spring:
       # Schema is owned by Flyway (backend/database); validate entities, never modify.
       ddl-auto: validate
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
   rabbitmq:
     addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 500ms
+
+devpulse:
+  rabbitmq:
+    exchange: ${DEVPULSE_RABBITMQ_EXCHANGE:devpulse.events}
+    metrics-queue: ${DEVPULSE_METRICS_QUEUE:devpulse.metrics.events}
+  metrics:
+    snapshots:
+      enabled: ${DORA_SNAPSHOTS_ENABLED:true}
+      cron: ${DORA_SNAPSHOT_CRON:0 5 0 * * *}
+      window-days: ${DORA_SNAPSHOT_WINDOW_DAYS:30}
+    workload:
+      target-active-prs: ${WORKLOAD_TARGET_ACTIVE_PRS:4}
 management:
   endpoints:
     web:
