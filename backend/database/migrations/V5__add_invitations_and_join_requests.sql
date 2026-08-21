@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migration V4: Organization Invitations, Project Invitations,
+-- Migration V5: Organization Invitations, Project Invitations,
 -- and Workspace Join Requests (GitHub User Join Workflow)
 -- =====================================================================
 
