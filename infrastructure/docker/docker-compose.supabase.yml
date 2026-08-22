@@ -22,33 +22,33 @@ services:
       redis: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     environment:
-      POSTGRES_URL: ${SUPABASE_JDBC_URL}
-      POSTGRES_USER: ${SUPABASE_USER}
-      POSTGRES_PASSWORD: ${SUPABASE_PASSWORD}
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
 
   integration-service:
     depends_on: !override
       rabbitmq: { condition: service_healthy }
     environment:
-      POSTGRES_URL: ${SUPABASE_JDBC_URL}
-      POSTGRES_USER: ${SUPABASE_USER}
-      POSTGRES_PASSWORD: ${SUPABASE_PASSWORD}
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
 
   metrics-service:
     depends_on: !override
       rabbitmq: { condition: service_healthy }
     environment:
-      POSTGRES_URL: ${SUPABASE_JDBC_URL}
-      POSTGRES_USER: ${SUPABASE_USER}
-      POSTGRES_PASSWORD: ${SUPABASE_PASSWORD}
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
 
   notification-service:
     depends_on: !override
       rabbitmq: { condition: service_healthy }
     environment:
-      POSTGRES_URL: ${SUPABASE_JDBC_URL}
-      POSTGRES_USER: ${SUPABASE_USER}
-      POSTGRES_PASSWORD: ${SUPABASE_PASSWORD}
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
 
   analytics-service:
     depends_on: !override
@@ -58,4 +58,4 @@ services:
       # NOTE: the password contains '@', which must be percent-encoded (%40) or
       # the DSN parser treats it as the start of the host. Set SUPABASE_PASSWORD_URLENC
       # in .env to the encoded form.
-      POSTGRES_URL: postgresql://${SUPABASE_USER}:${SUPABASE_PASSWORD_URLENC}@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
+      POSTGRES_URL: postgresql://postgres.sdehhcyghzkwinvhgmjj:cupcake%40jjj230@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
