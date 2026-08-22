@@ -41,10 +41,6 @@ public class SlackNotificationService {
         this.botToken = botToken;
     }
 
-    public SlackNotificationService(@Value("${devpulse.notification.slack.webhook-url:}") String defaultSlackWebhookUrl) {
-        this(new RestTemplate(), new ObjectMapper(), defaultSlackWebhookUrl, "");
-    }
-
     /**
      * Sends a formatted notification message to a Slack channel or Webhook URL.
      *
