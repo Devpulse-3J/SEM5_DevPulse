@@ -3,37 +3,36 @@ package com.devpulse.auth.dto;
 /**
  * Result of {@code POST /projects/{id}/invite}.
  *
- * <p>{@code status} distinguishes the two MVP paths:
- * <ul>
- *   <li>{@code ADDED_EXISTING_USER} — the email already belonged to this
- *       company, so the person was added straight to the project.</li>
- *   <li>{@code CREATED_USER} — no account existed, so an unclaimed placeholder
- *       was created and {@code mustResetPassword} is true. The invitee takes
- *       ownership of it by registering with this email, which sets their own
- *       password on the same row and keeps the membership just granted.</li>
- * </ul>
+ * <p>There is one success shape, {@code ADDED_EXISTING_USER}: the email belonged
+ * to an account in this company, so that person was added straight to the
+ * project. An admin may only invite someone who has already registered, so an
+ * address with no account behind it is a 404, not a second kind of success.
+ *
+ * <p>{@code CREATED_USER} was an earlier second path: the invite pre-created a
+ * placeholder {@code users} row flagged {@code must_reset_password}, so that
+ * {@code project_invitations.user_id} (NOT NULL) had something to point at. That
+ * made inviting a write to the users table, so inviting an address that already
+ * had an account hit the UNIQUE constraint on {@code users.email} and failed the
+ * whole request. This endpoint no longer touches users at all. The constant is
+ * kept only so an older client deserialising it still links; nothing returns it.
  *
  * <p>This response deliberately carries <b>no credential</b>. An earlier revision
  * returned a {@code temporaryPassword} for the admin to relay by hand; that made
- * the invite a second way into the account, left a live credential the admin also
- * knew, and — because nothing ever cleared {@code must_reset_password} — kept the
- * account claimable by anyone even after its owner started using it. Registration
- * is now the single path in.
- *
- * <p>Still outstanding: nothing proves the registrant owns the invited address.
- * A tokenised email invitation ({@code project_invitations} exists from V5) is
- * the fix once a mail transport is available.
+ * the invite a second way into the account and left a live credential the admin
+ * also knew. Registration is the single path in.
  */
 public class InviteResultResponse {
 
     public static final String ADDED_EXISTING_USER = "ADDED_EXISTING_USER";
+
+    /** @deprecated the placeholder-user path this described no longer exists. */
+    @Deprecated
     public static final String CREATED_USER = "CREATED_USER";
 
     private String status;
     private Integer userId;
     private String email;
     private String role;
-    private boolean mustResetPassword;
 
     public InviteResultResponse() {
     }
@@ -44,17 +43,6 @@ public class InviteResultResponse {
         response.userId = userId;
         response.email = email;
         response.role = role;
-        response.mustResetPassword = false;
-        return response;
-    }
-
-    public static InviteResultResponse createdUser(Integer userId, String email, String role) {
-        InviteResultResponse response = new InviteResultResponse();
-        response.status = CREATED_USER;
-        response.userId = userId;
-        response.email = email;
-        response.role = role;
-        response.mustResetPassword = true;
         return response;
     }
 
@@ -90,13 +78,5 @@ public class InviteResultResponse {
 
     public void setRole(String role) {
         this.role = role;
-    }
-
-    public boolean isMustResetPassword() {
-        return mustResetPassword;
-    }
-
-    public void setMustResetPassword(boolean mustResetPassword) {
-        this.mustResetPassword = mustResetPassword;
     }
 }

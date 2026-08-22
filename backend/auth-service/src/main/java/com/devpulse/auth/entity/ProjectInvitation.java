@@ -6,6 +6,12 @@ import java.time.OffsetDateTime;
 /**
  * JPA Entity representing a project-level membership invitation
  * created by a Project Manager.
+ *
+ * <p>An invitation always names a {@link User} that already exists: an admin may
+ * only invite someone who has registered. Inviting an unknown address is a 404
+ * from {@code POST /projects/{id}/invite}, never a new {@code users} row —
+ * pre-creating a placeholder account there collided with the UNIQUE constraint
+ * on {@code users.email} whenever the address turned out to already exist.
  */
 @Entity
 @Table(name = "project_invitations")

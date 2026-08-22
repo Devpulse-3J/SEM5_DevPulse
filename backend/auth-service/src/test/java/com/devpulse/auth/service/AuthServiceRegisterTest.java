@@ -29,6 +29,7 @@ public class AuthServiceRegisterTest {
 
     private UserRepository userRepository;
     private CompanyRepository companyRepository;
+    private ProjectMemberRepository projectMemberRepository;
     private PasswordEncoder passwordEncoder;
     private JwtService jwtService;
     private AuthServiceImpl service;
@@ -39,7 +40,7 @@ public class AuthServiceRegisterTest {
     public void setUp() {
         userRepository = mock(UserRepository.class);
         companyRepository = mock(CompanyRepository.class);
-        ProjectMemberRepository projectMemberRepository = mock(ProjectMemberRepository.class);
+        projectMemberRepository = mock(ProjectMemberRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwtService = mock(JwtService.class);
         AuthenticationManager authenticationManager = mock(AuthenticationManager.class);

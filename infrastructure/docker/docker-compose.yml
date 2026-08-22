@@ -27,16 +27,21 @@
 name: devpulse
 
 # ---- shared snippets -------------------------------------------------------
+# Credentials for the shared database. SUPABASE_* wins when set in .env, which
+# is how this project actually runs — the local `postgres` service below is
+# commented out, so the devpulse fallbacks only apply if someone turns it back on.
 x-postgres-env: &postgres-env
-  POSTGRES_USER: ${POSTGRES_USER:-devpulse}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
+  POSTGRES_USER: ${SUPABASE_USER:-devpulse}
+  POSTGRES_PASSWORD: ${SUPABASE_PASSWORD:-devpulse}
 
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_USER:-devpulse}:${RABBITMQ_PASSWORD:-devpulse}@rabbitmq:5672
 
-# The shared database URL (JDBC form) reused by every Java service.
+# The shared database URL (JDBC form) reused by every Java service. Pointing at
+# the container host `postgres` cannot work while that service is commented out;
+# SUPABASE_JDBC_URL from .env is the real target.
 x-postgres-url: &postgres-url
-  POSTGRES_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
+  POSTGRES_URL: ${SUPABASE_JDBC_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}}
 
 x-service-defaults: &service-defaults
   restart: unless-stopped
@@ -173,6 +178,10 @@ services:
       <<: [*postgres-env, *postgres-url, *rabbitmq-url]
       SERVER_PORT: 8082
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      # Read access for api.github.com. Without it GithubApiClient is
+      # unauthenticated: 60 requests/hour, private repos come back 404 (surfacing
+      # as a 502 from /github/link), and createWebhook cannot authenticate.
+      GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
       JIRA_WEBHOOK_SECRET: ${JIRA_WEBHOOK_SECRET:-}
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}

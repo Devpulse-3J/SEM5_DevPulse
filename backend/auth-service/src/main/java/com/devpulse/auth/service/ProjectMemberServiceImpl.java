@@ -5,20 +5,15 @@ import com.devpulse.auth.dto.ChangeMemberRoleRequest;
 import com.devpulse.auth.dto.InviteByEmailRequest;
 import com.devpulse.auth.dto.InviteResultResponse;
 import com.devpulse.auth.dto.ProjectMemberResponse;
-import com.devpulse.auth.entity.Company;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.ProjectRole;
-import com.devpulse.auth.entity.SystemRole;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ConflictException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
-import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.ProjectAccessService;
 import com.devpulse.auth.security.RequestContext;
-import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +22,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,31 +30,16 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectMemberServiceImpl.class);
 
-    private static final SecureRandom RANDOM = new SecureRandom();
-    /**
-     * Width of the throwaway secret behind an unclaimed placeholder's password
-     * hash. It is never returned, logged, or stored in plaintext — the value only
-     * has to be unguessable, so that no password can authenticate as the
-     * placeholder before its owner claims it through registration.
-     */
-    private static final int UNUSABLE_SECRET_BYTES = 32;
-
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
-    private final CompanyRepository companyRepository;
     private final ProjectAccessService projectAccessService;
-    private final PasswordEncoder passwordEncoder;
 
     public ProjectMemberServiceImpl(ProjectMemberRepository projectMemberRepository,
                                     UserRepository userRepository,
-                                    CompanyRepository companyRepository,
-                                    ProjectAccessService projectAccessService,
-                                    PasswordEncoder passwordEncoder) {
+                                    ProjectAccessService projectAccessService) {
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = userRepository;
-        this.companyRepository = companyRepository;
         this.projectAccessService = projectAccessService;
-        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -159,7 +138,9 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
 
         String email = request.getEmail().trim().toLowerCase();
         ProjectRole role = ProjectRole.valueOf(request.getRole().toUpperCase());
-        Optional<User> existing = userRepository.findByEmail(email);
+        // Case-insensitive: an account stored as 'A@x.com' is the same person as
+        // the 'a@x.com' being invited, and must not be treated as unregistered.
+        Optional<User> existing = userRepository.findByEmailIgnoreCase(email);
 
         if (existing.isPresent()) {
             User target = existing.get();
@@ -179,26 +160,13 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
             return InviteResultResponse.addedExisting(target.getUserId(), email, role.name());
         }
 
-        Company company = companyRepository.findById(context.companyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Company", context.companyId()));
-
-        User created = new User();
-        created.setEmail(email);
-        // The real name arrives when the invitee completes their account; the
-        // local part of the address is the only thing known now.
-        created.setFullName(email.substring(0, email.indexOf('@')));
-        created.setPasswordHash(unusablePasswordHash());
-        created.setCompany(company);
-        created.setSystemRoleEnum(SystemRole.MEMBER);
-        created.setMustResetPassword(true);
-
-        User saved = userRepository.save(created);
-        attachToProject(projectId, saved, role);
-
-        log.info("Admin {} invited new user {} to project {} as {} (account created, "
-                        + "password reset required)",
-                admin.getEmail(), email, projectId, role);
-        return InviteResultResponse.createdUser(saved.getUserId(), email, role.name());
+        // Nobody has registered this address, and an invite may only name someone
+        // who already has an account. This method must never write to users:
+        // pre-creating a placeholder here is what used to collide with the UNIQUE
+        // constraint on users.email and fail the whole invite.
+        log.info("Admin {} tried to invite unregistered address {} to project {}",
+                admin.getEmail(), email, projectId);
+        throw new ResourceNotFoundException("User", email);
     }
 
     // -- helpers -------------------------------------------------------------
@@ -223,21 +191,5 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
             throw new ResourceNotFoundException("User", userId);
         }
         return user;
-    }
-
-    /**
-     * Produces a password hash that no password can satisfy.
-     * <p>
-     * The placeholder row needs a non-null {@code password_hash}, but an
-     * unclaimed invite must not be loggable-into by anyone — including the admin
-     * who sent it. Hashing a secret that is discarded the moment it is used gives
-     * a well-formed bcrypt hash with no corresponding credential anywhere. The
-     * account becomes reachable only when the invitee sets their own password by
-     * registering, which is the single supported way in.
-     */
-    private String unusablePasswordHash() {
-        byte[] secret = new byte[UNUSABLE_SECRET_BYTES];
-        RANDOM.nextBytes(secret);
-        return passwordEncoder.encode(Base64.getEncoder().encodeToString(secret));
     }
 }

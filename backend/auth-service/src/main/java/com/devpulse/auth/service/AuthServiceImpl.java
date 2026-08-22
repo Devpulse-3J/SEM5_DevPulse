@@ -60,12 +60,16 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        // A project invite for an unknown email pre-creates a placeholder users row
-        // (see V8__project_flow_enhancements.sql) so the membership has something to
-        // point at. Its password hash is random and nobody knows it, and it is
-        // flagged must_reset_password. Rejecting that row as a duplicate would lock
+        // Legacy path. A project invite for an unknown email used to pre-create a
+        // placeholder users row (V8__project_flow_enhancements.sql) so the
+        // membership had something to point at, flagged must_reset_password with a
+        // password hash nobody knows. Rejecting that row as a duplicate would lock
         // the invitee out of the account created for them, so registration CLAIMS it
-        // instead: same user_id, so the project memberships already attached survive.
+        // instead: same user_id, so the memberships already attached survive.
+        //
+        // Inviting an unregistered address is now a 404 — an invite may only name
+        // someone who already has an account — so nothing creates these rows any
+        // more. The claim path stays only until any pre-existing ones are gone.
         User invited = userRepository.findByEmail(request.getEmail())
                 .filter(User::isMustResetPassword)
                 .orElse(null);
@@ -78,7 +82,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Company company;
-        boolean isAdmin = Boolean.TRUE.equals(request.getIsCompany()) 
+        boolean isAdmin = Boolean.TRUE.equals(request.getIsCompany())
                 || (request.getCompanyName() != null && !request.getCompanyName().isBlank());
 
         if (isAdmin) {

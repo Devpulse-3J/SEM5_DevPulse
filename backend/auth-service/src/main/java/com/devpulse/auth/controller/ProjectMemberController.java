@@ -95,9 +95,10 @@ public class ProjectMemberController {
      * {@code POST /projects/{id}/invite} — admin only.
      * Body: {@code { "email": "...", "role": "MANAGER" }}.
      *
-     * <p>Adds the person straight away if the email already belongs to this
-     * company; otherwise creates the account and returns a temporary password.
-     * See {@link InviteResultResponse} for why that is tech debt.
+     * <p>Adds the person straight away if the email belongs to an account in this
+     * company. An admin may only invite someone who has already registered, so an
+     * unknown address is a 404 and an address owned by another company is a 409.
+     * This endpoint never creates a user.
      */
     @PostMapping("/invite")
     public ResponseEntity<InviteResultResponse> invite(
