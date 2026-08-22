@@ -73,6 +73,27 @@ public class GithubApiClient {
         return executeGetRequest(url);
     }
 
+    /**
+     * Registers a push/pull_request webhook on a repository.
+     * <p>
+     * <b>MOCKED.</b> This logs the call it would make and returns false; it does
+     * not contact GitHub. Registering a hook needs a token with {@code admin:repo_hook}
+     * scope and a publicly reachable callback URL, neither of which is configured
+     * yet ({@code github.api.token} is empty by default, and the service runs on
+     * localhost). Until this is real, the hook must be added by hand in the
+     * repository's Settings → Webhooks, pointing at {@code /api/webhooks/github}
+     * with the same secret stored on the repo row.
+     *
+     * @return true only if a webhook was really created — always false today
+     */
+    public boolean createWebhook(String owner, String repo, String secret, String callbackUrl) {
+        log.warn("[MOCK] Would POST {}/repos/{}/{}/hooks with callback '{}' and a {} secret. "
+                        + "No request was made — register this webhook manually.",
+                baseUrl, owner, repo, callbackUrl,
+                secret == null || secret.isBlank() ? "service-wide" : "per-repo");
+        return false;
+    }
+
     private JsonNode executeGetRequest(String url) {
         log.info("Executing GitHub REST API GET request to: {}", url);
 

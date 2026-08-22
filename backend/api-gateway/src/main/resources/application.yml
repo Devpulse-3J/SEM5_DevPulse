@@ -28,6 +28,21 @@ spring:
                 redis-rate-limiter.burstCapacity: 20    # short spikes allowed up to this
                 redis-rate-limiter.requestedTokens: 1
 
+        # Project CRUD, members and invitations live in auth-service.
+        #
+        # The GitHub linking endpoints are deliberately NOT under /api/projects:
+        # they are mapped to /api/integrations/projects/{id}/github/** so they
+        # match the integration-service route below. Routes are evaluated in
+        # declaration order and the first match wins, so a
+        # /api/projects/*/github/** path would be swallowed by this route and
+        # never reach integration-service.
+        - id: projects
+          uri: ${AUTH_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/projects/**
+          filters:
+            - StripPrefix=1
+
         - id: metrics-service
           uri: ${METRICS_SERVICE_URI:http://localhost:8083}
           predicates:

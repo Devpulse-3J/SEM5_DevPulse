@@ -29,6 +29,14 @@ management:
         include: health,info
 
 github:
+  api:
+    # Key is camelCase to match GithubApiClient's @Value("${github.api.baseUrl}").
+    # @Value does no relaxed binding, so `base-url` here would not resolve.
+    baseUrl: ${GITHUB_API_BASE_URL:https://api.github.com}
+    # Personal access token or GitHub App token. Empty means unauthenticated:
+    # 60 requests/hour and private repositories return 404. The key was missing
+    # entirely before, so GithubApiClient always fell back to no auth.
+    token: ${GITHUB_API_TOKEN:}
   webhook:
     # No default: a webhook secret that falls back to a known constant is not a
     # secret. The service must fail to start rather than validate signatures

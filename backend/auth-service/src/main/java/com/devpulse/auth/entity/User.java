@@ -55,6 +55,14 @@ public class User implements UserDetails {
     @Column(name = "jira_account_id", length = 128)
     private String jiraAccountId;
 
+    /**
+     * Set when the account was created by a project invitation rather than by
+     * the person themselves — its password hash is random and unknown, so the
+     * account cannot be used until the password is reset.
+     */
+    @Column(name = "must_reset_password", nullable = false)
+    private boolean mustResetPassword;
+
     @Column(name = "created_at", nullable = false, updatable = false,
             columnDefinition = "timestamptz")
     private OffsetDateTime createdAt;
@@ -175,6 +183,14 @@ public class User implements UserDetails {
 
     public void setJiraAccountId(String jiraAccountId) {
         this.jiraAccountId = jiraAccountId;
+    }
+
+    public boolean isMustResetPassword() {
+        return mustResetPassword;
+    }
+
+    public void setMustResetPassword(boolean mustResetPassword) {
+        this.mustResetPassword = mustResetPassword;
     }
 
     public OffsetDateTime getCreatedAt() {

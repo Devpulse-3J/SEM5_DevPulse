@@ -13,4 +13,11 @@ public interface RepoRepository extends JpaRepository<Repo, Integer> {
     Optional<Repo> findByFullName(String fullName);
     List<Repo> findByCompanyId(Integer companyId);
     List<Repo> findByProjectId(Integer projectId);
+
+    /**
+     * The repositories linked to one project, constrained to a tenant.
+     * {@code findByProjectId} alone would cross company boundaries if two
+     * tenants ever shared a project id.
+     */
+    List<Repo> findByCompanyIdAndProjectId(Integer companyId, Integer projectId);
 }

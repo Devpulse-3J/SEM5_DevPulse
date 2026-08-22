@@ -2,6 +2,8 @@ package com.devpulse.integration.entity;
 
 import jakarta.persistence.*;
 
+import java.time.Instant;
+
 /**
  * Entity representing a GitHub repository in PostgreSQL (repos table).
  */
@@ -36,6 +38,17 @@ public class Repo {
 
     @Column(name = "default_branch", nullable = false, length = 255)
     private String defaultBranch = "main";
+
+    /**
+     * Per-repo HMAC secret for inbound GitHub deliveries. Null means this repo
+     * predates per-repo secrets and still validates against the service-wide
+     * GITHUB_WEBHOOK_SECRET.
+     */
+    @Column(name = "webhook_secret", length = 255)
+    private String webhookSecret;
+
+    @Column(name = "last_synced_at")
+    private Instant lastSyncedAt;
 
     public Repo() {}
 
@@ -72,4 +85,10 @@ public class Repo {
 
     public String getDefaultBranch() { return defaultBranch; }
     public void setDefaultBranch(String defaultBranch) { this.defaultBranch = defaultBranch; }
+
+    public String getWebhookSecret() { return webhookSecret; }
+    public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret; }
+
+    public Instant getLastSyncedAt() { return lastSyncedAt; }
+    public void setLastSyncedAt(Instant lastSyncedAt) { this.lastSyncedAt = lastSyncedAt; }
 }
