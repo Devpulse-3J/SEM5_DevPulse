@@ -81,7 +81,17 @@ devpulse:
       prefix: "Bearer "
 
 management:
+  endpoint:
+    health:
+      # Needed so /actuator/health names WHICH component is down
+      # (db, rabbit, redis) instead of only an aggregate status.
+      show-details: always
+  info:
+    env:
+      # Required for the info.* properties below to appear on /actuator/info.
+      enabled: true
   endpoints:
+  
     web:
       exposure:
         include: health,info

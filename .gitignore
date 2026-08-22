@@ -51,6 +51,16 @@ env/
 *.joblib
 *.model
 
+# ---- ML datasets ----
+# Large / regenerable. `dir/*` (not `dir/`) so the .gitkeep stays committable —
+# git cannot re-include a file whose parent directory is itself excluded.
+# data/samples/ is deliberately NOT ignored: small slices are committed so
+# teammates and CI can run the pipeline without the full dataset.
+backend/analytics-service/data/raw/*
+backend/analytics-service/data/processed/*
+!backend/analytics-service/data/raw/.gitkeep
+!backend/analytics-service/data/processed/.gitkeep
+
 # ---- Logs / misc ----
 *.log
 coverage/
@@ -58,3 +68,5 @@ coverage/
 
 
 CLAUDE.md
+
+*.pem

@@ -2,13 +2,13 @@
 
 **Author:** Umaya (Computer Science & Engineering Undergraduate)  
 **Service:** `notification-service`  
-**Purpose:** Event Consumption from RabbitMQ, Alert Rule Management, Alert Evaluation & Generation, Multi-Channel Notification Dispatching (Slack, Email), and PostgreSQL Persistence (`alerts`, `notifications`, `alert_rules`).
+**Purpose:** Event Consumption from RabbitMQ, Alert Rule Management, Alert Evaluation & Generation, Multi-Channel Notification Dispatching (Slack, Email, Webhook), and PostgreSQL Persistence (`alerts`, `notifications`, `alert_rules`).
 
 ---
 
 ## 1. High-Level Architecture & End-to-End Flow
 
-The `notification-service` is the central alerting and notification engine for the DevPulse platform. It operates asynchronously by consuming developer events broadcast over RabbitMQ, evaluating incoming high-risk alerts against configured alert rules, saving alert audit trails to PostgreSQL, and dispatching notifications to team channels (Slack and Email).
+The `notification-service` is the central alerting and notification engine for the DevPulse platform. It operates asynchronously by consuming developer events broadcast over RabbitMQ, evaluating incoming high-risk alerts against configured alert rules, saving alert audit trails to PostgreSQL, and dispatching notifications to team channels (Slack, Email, and Webhook).
 
 ### Complete Notification & Alert Pipeline
 
@@ -31,27 +31,23 @@ The `notification-service` is the central alerting and notification engine for t
              └──────────────────────┬──────────────────────┘
                                     │
      ┌──────────────────────────────┼──────────────────────────────┐
-     │ 1. Persist Alert Record      │ 2. Dispatch Slack            │ 3. Dispatch Email & Audit Log
+     │ 1. Persist Alert Record      │ 2. Evaluate Alert Rules      │ 3. Multi-Channel Dispatch & Audit Log
      ▼                              ▼                              ▼
 ┌─────────────────────────┐ ┌────────────────────────┐ ┌──────────────────────────────────┐
-│ Alert & AlertRepository │ │SlackNotificationService│ │     EmailNotificationService     │
-│       (PostgreSQL)      │ │      (RestTemplate)    │ │        (JavaMailSender)          │
-└─────────────────────────┘ └────────────────────────┘ └─────────────────┬────────────────┘
-                                                                         │
-                                                                         ▼
-                                                       ┌──────────────────────────────────┐
-                                                       │    Notification & Repository     │
-                                                       │ (Persisted in PostgreSQL: 'sent')│
-                                                       └──────────────────────────────────┘
+│ Alert & AlertRepository │ │  AlertRuleRepository   │ │ Slack, Email & Webhook Services  │
+│       (PostgreSQL)      │ │   (Rule Evaluation)    │ │   (Audit persisted in PostgreSQL)│
+└─────────────────────────┘ └────────────────────────┘ └──────────────────────────────────┘
 ```
 
 1. **Async Queue Consumption:** The `@RabbitListener` method in `NotificationEventListener` listens continuously on queue `notification.events`.
 2. **Polymorphic Event Processing:** When an `AlertPrHighRiskEvent` arrives from RabbitMQ, the service extracts risk scores, model algorithm details, and affected PR identifiers.
-3. **Alert Persistence:** An `Alert` entity is instantiated with severity level `critical` or `warning` and persisted into PostgreSQL via `AlertRepository`.
-4. **Multi-Channel Dispatching:**
+3. **Alert Rule Evaluation:** Active alert rules are queried via `AlertRuleRepository.findByCompanyIdAndIsActiveTrue(companyId)` to match specific channel configurations and link rule IDs.
+4. **Alert Persistence:** An `Alert` entity is instantiated with severity level `critical` or `warning` and persisted into PostgreSQL via `AlertRepository`.
+5. **Multi-Channel Dispatching:**
    * `SlackNotificationService` formats a structured payload and dispatches it via HTTP `POST` using `RestTemplate` to Slack Incoming Webhooks.
    * `EmailNotificationService` formats email notifications and sends them using `JavaMailSender`.
-5. **Notification Audit Logging:** A `Notification` record is created and stored in PostgreSQL with status set to `'sent'` (or `'failed'`) and timestamped with `sent_at`.
+   * `WebhookNotificationService` formats and delivers HTTP JSON payloads to custom Webhook endpoints.
+6. **Notification Audit Logging:** `Notification` records are created and stored in PostgreSQL for each delivery channel with status set to `'sent'` (or `'failed'`).
 
 ---
 
@@ -86,18 +82,7 @@ The `notification-service` is the central alerting and notification engine for t
   * `jsonMessageConverter()`: Uses `Jackson2JsonMessageConverter` to deserialize incoming RabbitMQ JSON messages into Java event objects using class headers (`__TypeId__`).
 
 #### `NotificationEventListener.java`
-* **What it does:** Asynchronously receives and processes events from RabbitMQ.
-* **Key Spring AMQP Annotations:**
-  * `@Component`: Managed Spring bean.
-  * `@RabbitListener(queues = "${devpulse.rabbitmq.queue.notification:notification.events}")`: Tells Spring AMQP to automatically listen to the queue and execute `handleIncomingEvent(BaseEvent event)` when a message arrives.
-  * **Pattern Matching with `instanceof`:**
-    ```java
-    if (event instanceof AlertPrHighRiskEvent highRiskEvent) {
-        // Handle high risk PR alert, save Alert & Notification entities
-    } else if (event instanceof PrOpenedEvent prEvent) {
-        // Log PR opened metric event
-    }
-    ```
+* **What it does:** Asynchronously receives and processes events from RabbitMQ, evaluating configured alert rules and triggering multi-channel notifications (Slack, Email, Webhook).
 
 ---
 
@@ -115,9 +100,15 @@ The `notification-service` is the central alerting and notification engine for t
   * `JavaMailSender`: Spring Boot's mail abstraction for sending SMTP emails.
   * `SimpleMailMessage`: Represents basic email attributes (`setTo`, `setSubject`, `setText`, `setFrom`).
 
+#### `WebhookNotificationService.java`
+* **What it does:** Dispatches JSON notification payloads to external HTTP Webhook endpoints.
+* **Key Concepts:**
+  * `RestTemplate`: Performs HTTP POST calls to deliver payloads to registered webhook URLs.
+  * **Fallback Handling:** Simulates delivery when webhook URLs are unconfigured during local development.
+
 ---
 
-### 2.4 REST API Controller & Service Layer (Alert Rules)
+## 2.4 REST API Controller & Service Layer (Alert Rules)
 
 #### `AlertRuleService.java`
 * **What it does:** Business logic layer for managing user-defined alert rules.
@@ -142,7 +133,7 @@ The `notification-service` is the central alerting and notification engine for t
 | :--- | :--- | :--- |
 | **`@RabbitListener`** | Asynchronously consumes messages from a RabbitMQ queue. | `NotificationEventListener.handleIncomingEvent(BaseEvent event)` listens on `notification.events`. |
 | **Derived JPA Queries** | Spring Data automatically generates SQL from method names. | `AlertRuleRepository.findByCompanyIdAndIsActiveTrue(companyId)` queries active rules for a company. |
-| **`RestTemplate`** | Spring's HTTP client for making REST API calls to external services. | `SlackNotificationService.sendSlackNotification()` posts alerts to Slack webhooks. |
+| **`RestTemplate`** | Spring's HTTP client for making REST API calls to external services. | `SlackNotificationService` and `WebhookNotificationService` post alerts to webhooks. |
 | **Polymorphic Event Handling** | Handles different event types using common base class inheritance. | `handleIncomingEvent(BaseEvent event)` receives `AlertPrHighRiskEvent`, `PrOpenedEvent`, or `PrMergedEvent`. |
 | **Soft Deletion Pattern** | Marks records inactive instead of deleting rows from database. | `AlertRuleService.deleteRule()` sets `rule.setActive(false)` to preserve audit history. |
 | **REST Controller** | Exposes HTTP JSON endpoints for frontend integrations. | [AlertRuleController.java](file:///c:/Users/user/Documents/GitHub/SEM5_DevPulse/backend/notification-service/src/main/java/com/devpulse/notification/controller/AlertRuleController.java) handles `/api/alerts/rules`. |
@@ -154,12 +145,10 @@ The `notification-service` is the central alerting and notification engine for t
 Unit tests built using **JUnit 5**, **Mockito**, and **Spring Boot Test MockMvc**:
 * **`AlertRuleControllerTest`**: Uses `@WebMvcTest` and `MockMvc` to test REST API HTTP endpoints (`GET`, `POST`, `DELETE`).
 * **`AlertRuleServiceTest`**: Tests business logic with Mockito repository mocks (`when().thenReturn()`, `verify()`).
-* **`NotificationEventListenerTest`**: Mocks `AlertRepository`, `NotificationRepository`, `SlackNotificationService`, and `EmailNotificationService` to verify async message processing and database persistence triggers.
-* **`SlackNotificationServiceTest` & `EmailNotificationServiceTest`**: Verify multi-channel notification dispatchers.
+* **`NotificationEventListenerTest`**: Mocks `AlertRepository`, `AlertRuleRepository`, `NotificationRepository`, `SlackNotificationService`, `EmailNotificationService`, and `WebhookNotificationService` to verify async message processing, rule evaluation, and multi-channel persistence triggers.
+* **`SlackNotificationServiceTest`, `EmailNotificationServiceTest`, & `WebhookNotificationServiceTest`**: Verify multi-channel notification dispatchers.
 
 Run all tests anytime via:
 ```bash
 mvn test -pl notification-service -am
 ```
-
-Current test status: **14/14 tests passing (`BUILD SUCCESS`)**!

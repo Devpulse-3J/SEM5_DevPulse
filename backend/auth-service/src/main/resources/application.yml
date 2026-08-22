@@ -20,6 +20,10 @@ jwt:
   secret: ${JWT_SECRET:devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
   expiration: ${JWT_EXPIRATION:3600}
 management:
+  info:
+    env:
+      # Required for the info.* properties below to appear on /actuator/info.
+      enabled: true
   endpoint:
     health:
       show-details: always
@@ -30,3 +34,10 @@ management:
     web:
       exposure:
         include: health,info
+
+# Surfaced at GET /actuator/info.
+info:
+  app:
+    name: auth-service
+    description: Users, companies, projects, memberships, JWT issuing and per-project RBAC.
+    version: '@project.version@'
