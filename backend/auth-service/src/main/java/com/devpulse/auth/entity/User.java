@@ -8,6 +8,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -70,6 +71,21 @@ public class User implements UserDetails {
     // -- constructors --------------------------------------------------------
 
     public User() {
+    }
+
+    /**
+     * Unlike the sibling entities, User has no parameterised constructor to set
+     * {@code createdAt}, so it would otherwise depend on every call site
+     * remembering to. Hibernate always lists the mapped column in the INSERT, so
+     * a missed set writes an explicit NULL and the column's {@code DEFAULT now()}
+     * never applies — the insert fails the NOT NULL constraint instead.
+     * An explicit value set by the caller is preserved.
+     */
+    @PrePersist
+    void applyCreationTimestamp() {
+        if (createdAt == null) {
+            createdAt = OffsetDateTime.now();
+        }
     }
 
     // -- UserDetails implementation ------------------------------------------

@@ -18,6 +18,7 @@ import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.ProjectAccessService;
 import com.devpulse.auth.security.RequestContext;
 import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -36,10 +37,13 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     private static final Logger log = LoggerFactory.getLogger(ProjectMemberServiceImpl.class);
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String PASSWORD_ALPHABET =
-            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-    /** Comfortably above the 8-character minimum the register endpoint enforces. */
-    private static final int TEMP_PASSWORD_LENGTH = 16;
+    /**
+     * Width of the throwaway secret behind an unclaimed placeholder's password
+     * hash. It is never returned, logged, or stored in plaintext — the value only
+     * has to be unguessable, so that no password can authenticate as the
+     * placeholder before its owner claims it through registration.
+     */
+    private static final int UNUSABLE_SECRET_BYTES = 32;
 
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
@@ -178,13 +182,12 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         Company company = companyRepository.findById(context.companyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", context.companyId()));
 
-        String temporaryPassword = generateTemporaryPassword();
         User created = new User();
         created.setEmail(email);
         // The real name arrives when the invitee completes their account; the
         // local part of the address is the only thing known now.
         created.setFullName(email.substring(0, email.indexOf('@')));
-        created.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        created.setPasswordHash(unusablePasswordHash());
         created.setCompany(company);
         created.setSystemRoleEnum(SystemRole.MEMBER);
         created.setMustResetPassword(true);
@@ -195,8 +198,7 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         log.info("Admin {} invited new user {} to project {} as {} (account created, "
                         + "password reset required)",
                 admin.getEmail(), email, projectId, role);
-        return InviteResultResponse.createdUser(
-                saved.getUserId(), email, role.name(), temporaryPassword);
+        return InviteResultResponse.createdUser(saved.getUserId(), email, role.name());
     }
 
     // -- helpers -------------------------------------------------------------
@@ -223,11 +225,19 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         return user;
     }
 
-    private String generateTemporaryPassword() {
-        StringBuilder builder = new StringBuilder(TEMP_PASSWORD_LENGTH);
-        for (int i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
-            builder.append(PASSWORD_ALPHABET.charAt(RANDOM.nextInt(PASSWORD_ALPHABET.length())));
-        }
-        return builder.toString();
+    /**
+     * Produces a password hash that no password can satisfy.
+     * <p>
+     * The placeholder row needs a non-null {@code password_hash}, but an
+     * unclaimed invite must not be loggable-into by anyone — including the admin
+     * who sent it. Hashing a secret that is discarded the moment it is used gives
+     * a well-formed bcrypt hash with no corresponding credential anywhere. The
+     * account becomes reachable only when the invitee sets their own password by
+     * registering, which is the single supported way in.
+     */
+    private String unusablePasswordHash() {
+        byte[] secret = new byte[UNUSABLE_SECRET_BYTES];
+        RANDOM.nextBytes(secret);
+        return passwordEncoder.encode(Base64.getEncoder().encodeToString(secret));
     }
 }

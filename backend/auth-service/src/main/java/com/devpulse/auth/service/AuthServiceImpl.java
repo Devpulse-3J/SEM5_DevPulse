@@ -60,6 +60,19 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        // A project invite for an unknown email pre-creates a placeholder users row
+        // (see V8__project_flow_enhancements.sql) so the membership has something to
+        // point at. Its password hash is random and nobody knows it, and it is
+        // flagged must_reset_password. Rejecting that row as a duplicate would lock
+        // the invitee out of the account created for them, so registration CLAIMS it
+        // instead: same user_id, so the project memberships already attached survive.
+        User invited = userRepository.findByEmail(request.getEmail())
+                .filter(User::isMustResetPassword)
+                .orElse(null);
+        if (invited != null) {
+            return claimInvitedAccount(invited, request);
+        }
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateEmailException(request.getEmail());
         }
@@ -103,6 +116,29 @@ public class AuthServiceImpl implements AuthService {
         String token = jwtService.generateToken(savedUser);
 
         return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+    }
+
+    /**
+     * Completes an invited-but-unclaimed account: the invitee sets their own name
+     * and password on the row the invite created.
+     * <p>
+     * Company and system role are deliberately NOT taken from the request. The
+     * placeholder already belongs to the company that invited it and carries that
+     * company's project memberships; honouring a {@code companyName} here would move
+     * the user to a new company and orphan those memberships — losing exactly the
+     * access the invite was meant to grant. Keeping the role at what the inviter set
+     * also stops a claim from silently escalating to admin.
+     */
+    private AuthResponse claimInvitedAccount(User invited, RegisterRequest request) {
+        invited.setFullName(request.getFullName());
+        invited.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        // The account now has a password its owner chose, so it is no longer a
+        // placeholder and a second register() must be rejected as a duplicate.
+        invited.setMustResetPassword(false);
+
+        User claimed = userRepository.save(invited);
+        String token = jwtService.generateToken(claimed);
+        return userMapper.toAuthResponse(claimed, token, jwtService.getExpirationSeconds());
     }
 
     @Override

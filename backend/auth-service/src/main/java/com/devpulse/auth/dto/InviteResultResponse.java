@@ -7,16 +7,22 @@ package com.devpulse.auth.dto;
  * <ul>
  *   <li>{@code ADDED_EXISTING_USER} — the email already belonged to this
  *       company, so the person was added straight to the project.</li>
- *   <li>{@code CREATED_USER} — no account existed, so a placeholder was created
- *       with a random password. {@code temporaryPassword} is populated in this
- *       case <b>only</b>.</li>
+ *   <li>{@code CREATED_USER} — no account existed, so an unclaimed placeholder
+ *       was created and {@code mustResetPassword} is true. The invitee takes
+ *       ownership of it by registering with this email, which sets their own
+ *       password on the same row and keeps the membership just granted.</li>
  * </ul>
  *
- * <p><b>Tech debt.</b> Returning a password in an API response is a stopgap:
- * there is no mail transport and no password-reset endpoint, so the admin
- * relaying it by hand is the only way the invitee can sign in. Replace this
- * with a tokenised email invitation ({@code project_invitations} already exists
- * from V5) and drop the field.
+ * <p>This response deliberately carries <b>no credential</b>. An earlier revision
+ * returned a {@code temporaryPassword} for the admin to relay by hand; that made
+ * the invite a second way into the account, left a live credential the admin also
+ * knew, and — because nothing ever cleared {@code must_reset_password} — kept the
+ * account claimable by anyone even after its owner started using it. Registration
+ * is now the single path in.
+ *
+ * <p>Still outstanding: nothing proves the registrant owns the invited address.
+ * A tokenised email invitation ({@code project_invitations} exists from V5) is
+ * the fix once a mail transport is available.
  */
 public class InviteResultResponse {
 
@@ -27,7 +33,6 @@ public class InviteResultResponse {
     private Integer userId;
     private String email;
     private String role;
-    private String temporaryPassword;
     private boolean mustResetPassword;
 
     public InviteResultResponse() {
@@ -43,14 +48,12 @@ public class InviteResultResponse {
         return response;
     }
 
-    public static InviteResultResponse createdUser(Integer userId, String email, String role,
-                                                   String temporaryPassword) {
+    public static InviteResultResponse createdUser(Integer userId, String email, String role) {
         InviteResultResponse response = new InviteResultResponse();
         response.status = CREATED_USER;
         response.userId = userId;
         response.email = email;
         response.role = role;
-        response.temporaryPassword = temporaryPassword;
         response.mustResetPassword = true;
         return response;
     }
@@ -87,14 +90,6 @@ public class InviteResultResponse {
 
     public void setRole(String role) {
         this.role = role;
-    }
-
-    public String getTemporaryPassword() {
-        return temporaryPassword;
-    }
-
-    public void setTemporaryPassword(String temporaryPassword) {
-        this.temporaryPassword = temporaryPassword;
     }
 
     public boolean isMustResetPassword() {
