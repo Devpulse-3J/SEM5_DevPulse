@@ -98,6 +98,8 @@ Current migrations:
 | `V1__create_tables.sql` | All 17 tables, constraints, and indexes |
 | `V2__seed_roles.sql` | Documented no-op — roles are CHECK constraints, not a table |
 | `V3__seed_demo_data.sql` | Local-only demo company/users/project (do not use in prod) |
+| `V4__add_developer_system_roles.sql` | Extends the users system-role CHECK constraint |
+| `V5__extend_metrics_service_schema.sql` | Metrics API fields, event idempotency keys, PR checks, and DORA indexes |
 
 ---
 
