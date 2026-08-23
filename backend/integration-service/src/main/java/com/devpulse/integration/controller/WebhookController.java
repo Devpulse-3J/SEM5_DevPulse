@@ -72,9 +72,14 @@ public class WebhookController {
         log.info("Received GitHub webhook event: {}, resolved companyId: {}", eventType, companyId);
 
         if (signature == null || signature.isBlank()) {
-            log.warn("GitHub webhook received with no X-Hub-Signature-256 header, event: {}. Proceeding in dev mode.", eventType);
-        } else if (!githubSignatureValidator.isValidSignature(payload, signature)) {
-            log.warn("Invalid GitHub webhook signature received for event: {}. Proceeding in dev mode.", eventType);
+            log.warn("Rejected GitHub webhook with no X-Hub-Signature-256 header, event: {}", eventType);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Missing webhook signature"));
+        }
+        if (!githubSignatureValidator.isValidSignature(payload, signature)) {
+            log.warn("Invalid GitHub webhook signature received for event: {}", eventType);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid webhook signature"));
         }
 
         // 1. Save raw event log
