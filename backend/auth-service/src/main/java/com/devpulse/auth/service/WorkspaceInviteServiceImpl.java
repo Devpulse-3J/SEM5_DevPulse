@@ -14,6 +14,10 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+
 @Service
 public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
 
@@ -25,6 +29,7 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
     private final OrganizationInvitationRepository orgInviteRepository;
     private final WorkspaceJoinRequestRepository joinRequestRepository;
     private final ProjectInvitationRepository projectInviteRepository;
+    private final JavaMailSender mailSender;
 
     public WorkspaceInviteServiceImpl(
             CompanyRepository companyRepository,
@@ -32,13 +37,15 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
             ProjectMemberRepository projectMemberRepository,
             OrganizationInvitationRepository orgInviteRepository,
             WorkspaceJoinRequestRepository joinRequestRepository,
-            ProjectInvitationRepository projectInviteRepository) {
+            ProjectInvitationRepository projectInviteRepository,
+            @Autowired(required = false) JavaMailSender mailSender) {
         this.companyRepository = companyRepository;
         this.userRepository = userRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.orgInviteRepository = orgInviteRepository;
         this.joinRequestRepository = joinRequestRepository;
         this.projectInviteRepository = projectInviteRepository;
+        this.mailSender = mailSender;
     }
 
     @Override
@@ -53,11 +60,39 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         OffsetDateTime expiresAt = OffsetDateTime.now().plusDays(7);
 
         OrganizationInvitation invitation = new OrganizationInvitation(
-                company, request.getEmail(), request.getRole(), token, actor, expiresAt
-        );
+                company, request.getEmail(), request.getRole(), token, actor, expiresAt);
 
-        log.info("Admin {} created OrganizationInvitation for email {} in company {}", actor.getEmail(), request.getEmail(), company.getCompanyId());
-        return orgInviteRepository.save(invitation);
+        log.info("Admin {} created OrganizationInvitation for email {} in company {}", actor.getEmail(),
+                request.getEmail(), company.getCompanyId());
+
+        OrganizationInvitation saved = orgInviteRepository.save(invitation);
+
+        // Send email invitation
+        sendInviteEmail(saved.getEmail(), saved.getToken(), company.getCompanyName(), saved.getRole());
+
+        return saved;
+    }
+
+    private void sendInviteEmail(String toEmail, String token, String companyName, String role) {
+        if (mailSender == null) {
+            log.info("JavaMailSender not configured; skipping email dispatch to {}", toEmail);
+            return;
+        }
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom("jayasuriyaumaya@gmail.com");
+            message.setTo(toEmail);
+            message.setSubject("Invitation to join " + companyName + " on DevPulse");
+            message.setText("Hello,\n\n" +
+                    "You have been invited to join the workspace \"" + companyName + "\" on DevPulse as a " + role + "!\n\n" +
+                    "Please click the link below to create your account and accept your workspace invitation:\n" +
+                    "http://localhost:3000/accept-invite?token=" + token + "\n\n" +
+                    "(This invitation link will expire in 7 days).\n");
+            mailSender.send(message);
+            log.info("Invitation email successfully sent to {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
+        }
     }
 
     @Override
@@ -83,7 +118,8 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         invitation.setStatus("accepted");
         orgInviteRepository.save(invitation);
 
-        log.info("User {} successfully accepted organization invitation to join company {}", user.getEmail(), invitation.getCompany().getCompanyId());
+        log.info("User {} successfully accepted organization invitation to join company {}", user.getEmail(),
+                invitation.getCompany().getCompanyId());
         return updatedUser;
     }
 
@@ -96,7 +132,8 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
                 .anyMatch(pm -> pm.getProjectId().equals(projectId) && "manager".equalsIgnoreCase(pm.getRole()));
 
         if (!isAdmin && !isManager) {
-            throw new AccessDeniedException("Only Project Managers or Organization Admins can invite team members to a project");
+            throw new AccessDeniedException(
+                    "Only Project Managers or Organization Admins can invite team members to a project");
         }
 
         User targetUser = userRepository.findById(request.getUserId())
@@ -106,7 +143,8 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
                 .orElseGet(() -> new ProjectMember(projectId, targetUser.getUserId(), request.getRole()));
 
         membership.setRole(request.getRole());
-        log.info("User {} invited target user {} to project {} as {}", actor.getEmail(), targetUser.getEmail(), projectId, request.getRole());
+        log.info("User {} invited target user {} to project {} as {}", actor.getEmail(), targetUser.getEmail(),
+                projectId, request.getRole());
         return projectMemberRepository.save(membership);
     }
 
@@ -118,7 +156,8 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
 
         WorkspaceJoinRequest joinRequest = joinRequestRepository
                 .findByCompanyCompanyIdAndUserUserId(companyId, actor.getUserId())
-                .orElseGet(() -> new WorkspaceJoinRequest(company, actor, request.getGithubUsername(), request.getMessage()));
+                .orElseGet(() -> new WorkspaceJoinRequest(company, actor, request.getGithubUsername(),
+                        request.getMessage()));
 
         joinRequest.setStatus("pending");
         joinRequest.setGithubUsername(request.getGithubUsername());
@@ -152,7 +191,8 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         targetUser.setCompany(joinRequest.getCompany());
         userRepository.save(targetUser);
 
-        log.info("Admin {} approved join request ID {} for user {}", actor.getEmail(), requestId, targetUser.getEmail());
+        log.info("Admin {} approved join request ID {} for user {}", actor.getEmail(), requestId,
+                targetUser.getEmail());
         return joinRequestRepository.save(joinRequest);
     }
 
@@ -168,8 +208,18 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         joinRequest.setReviewedBy(actor);
         joinRequest.setReviewedAt(OffsetDateTime.now());
 
-        log.info("Admin {} rejected join request ID {} for user {}", actor.getEmail(), requestId, joinRequest.getUser().getEmail());
+        log.info("Admin {} rejected join request ID {} for user {}", actor.getEmail(), requestId,
+                joinRequest.getUser().getEmail());
         return joinRequestRepository.save(joinRequest);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Company> searchWorkspaces(String query) {
+        if (query == null || query.isBlank()) {
+            return companyRepository.findAll();
+        }
+        return companyRepository.findByCompanyNameContainingIgnoreCase(query.trim());
     }
 
     private void validateCompanyAdminAccess(User actor, Integer companyId) {

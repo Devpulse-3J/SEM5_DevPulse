@@ -24,6 +24,7 @@ package com.devpulse.auth.dto;
 public class InviteResultResponse {
 
     public static final String ADDED_EXISTING_USER = "ADDED_EXISTING_USER";
+    public static final String INVITED_NEW_USER = "INVITED_NEW_USER";
 
     /** @deprecated the placeholder-user path this described no longer exists. */
     @Deprecated
@@ -41,6 +42,14 @@ public class InviteResultResponse {
         InviteResultResponse response = new InviteResultResponse();
         response.status = ADDED_EXISTING_USER;
         response.userId = userId;
+        response.email = email;
+        response.role = role;
+        return response;
+    }
+
+    public static InviteResultResponse invitedNew(String email, String role) {
+        InviteResultResponse response = new InviteResultResponse();
+        response.status = INVITED_NEW_USER;
         response.email = email;
         response.role = role;
         return response;

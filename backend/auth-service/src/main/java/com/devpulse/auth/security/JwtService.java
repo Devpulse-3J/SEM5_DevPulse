@@ -50,7 +50,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(String.valueOf(user.getUserId()))
                 .claim("email", user.getEmail())
-                .claim("companyId", user.getCompany().getCompanyId())
+                .claim("companyId", user.getCompany() != null ? user.getCompany().getCompanyId() : null)
                 .claim("systemRole", user.getSystemRole())
                 .issuedAt(now)
                 .expiration(expiry)

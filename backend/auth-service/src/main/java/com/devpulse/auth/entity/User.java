@@ -35,7 +35,7 @@ public class User implements UserDetails {
     private Integer userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id")
     private Company company;
 
     @Column(name = "email", nullable = false, unique = true, length = 320)

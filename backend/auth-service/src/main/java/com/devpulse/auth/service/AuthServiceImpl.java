@@ -100,12 +100,8 @@ public class AuthServiceImpl implements AuthService {
             company = companyRepository.findById(request.getCompanyId())
                     .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
         } else {
-            // Individual signup -> associate with default or personal workspace
-            company = companyRepository.findById(1).orElseGet(() -> {
-                Company defaultCompany = new Company(request.getFullName().trim() + "'s Workspace", "free");
-                defaultCompany.setCreatedAt(OffsetDateTime.now());
-                return companyRepository.save(defaultCompany);
-            });
+            // Individual signup without company invite -> company is null until invited or joined
+            company = null;
         }
 
         User user = new User();

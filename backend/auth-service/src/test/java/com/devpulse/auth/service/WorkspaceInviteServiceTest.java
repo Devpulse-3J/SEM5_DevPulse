@@ -40,7 +40,7 @@ public class WorkspaceInviteServiceTest {
 
         service = new WorkspaceInviteServiceImpl(
                 companyRepository, userRepository, projectMemberRepository,
-                orgInviteRepository, joinRequestRepository, projectInviteRepository
+                orgInviteRepository, joinRequestRepository, projectInviteRepository, null
         );
 
         company = new Company();

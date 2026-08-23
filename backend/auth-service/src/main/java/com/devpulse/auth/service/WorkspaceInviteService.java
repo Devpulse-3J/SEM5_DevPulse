@@ -20,4 +20,6 @@ public interface WorkspaceInviteService {
     WorkspaceJoinRequest approveJoinRequest(User actor, Integer companyId, Integer requestId);
 
     WorkspaceJoinRequest rejectJoinRequest(User actor, Integer companyId, Integer requestId);
+
+    List<Company> searchWorkspaces(String query);
 }
