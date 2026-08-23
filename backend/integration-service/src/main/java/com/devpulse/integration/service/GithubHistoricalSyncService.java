@@ -56,7 +56,6 @@ public class GithubHistoricalSyncService {
      * @param projectId Project ID mapping
      * @return Summary map of synced records
      */
-    @Transactional
     public Map<String, Object> syncHistoricalProjectData(String owner, String repo, Integer companyId, Integer projectId) {
         log.info("Starting historical GitHub sync for owner: {}, repo: {}, companyId: {}", owner, repo, companyId);
         int prsSynced = 0;
@@ -64,29 +63,43 @@ public class GithubHistoricalSyncService {
 
         // 1. Fetch & Persist Repo details
         JsonNode repoData = githubApiClient.fetchRepositoryDetails(owner, repo);
-        Long githubRepoId = repoData.path("id").asLong(1L);
+        Long githubRepoId = repoData.path("id").asLong(0L);
         String repoName = repoData.path("name").asText(repo);
         String ownerName = repoData.path("owner").path("login").asText(owner);
         String fullName = repoData.path("full_name").asText(owner + "/" + repo);
         String defaultBranch = repoData.path("default_branch").asText("main");
 
-        Repo repoEntity = repoRepository.findByCompanyIdAndGithubRepoId(companyId, githubRepoId)
-                .orElseGet(() -> new Repo(companyId, projectId, githubRepoId, repoName, ownerName, fullName, defaultBranch));
+        Repo repoEntity = repoRepository.findByCompanyIdAndProjectId(companyId, projectId)
+                .stream().findFirst()
+                .orElseGet(() -> repoRepository.findByCompanyIdAndGithubRepoId(companyId, githubRepoId)
+                        .orElseGet(() -> new Repo(companyId, projectId, githubRepoId > 0 ? githubRepoId : System.currentTimeMillis(), repoName, ownerName, fullName, defaultBranch)));
 
+        if (githubRepoId > 0) {
+            repoEntity.setGithubRepoId(githubRepoId);
+        }
         repoEntity.setRepoName(repoName);
         repoEntity.setOwnerName(ownerName);
         repoEntity.setFullName(fullName);
         repoEntity.setDefaultBranch(defaultBranch);
-        repoRepository.save(repoEntity);
+        repoEntity.setLastSyncedAt(Instant.now());
+        try {
+            repoEntity = repoRepository.save(repoEntity);
+        } catch (Exception e) {
+            log.warn("Could not update repo lastSyncedAt: {}", e.getMessage());
+        }
 
         // 2. Fetch & Process Historical Pull Requests
         JsonNode prsNode = githubApiClient.fetchPullRequests(owner, repo, "all");
-        if (prsNode.isArray()) {
+        if (prsNode != null && prsNode.isArray()) {
             for (JsonNode prNode : prsNode) {
                 try {
-                    String rawPayload = objectMapper.writeValueAsString(prNode);
-                    RawEventLog rawLog = new RawEventLog(companyId, "github_sync", "pull_request", rawPayload);
-                    rawEventLogRepository.save(rawLog);
+                    try {
+                        String rawPayload = objectMapper.writeValueAsString(prNode);
+                        RawEventLog rawLog = new RawEventLog(companyId, "github", "pull_request", rawPayload);
+                        rawEventLogRepository.save(rawLog);
+                    } catch (Exception logEx) {
+                        log.warn("Could not persist raw log for PR: {}", logEx.getMessage());
+                    }
 
                     Integer prId = prNode.path("id").asInt(1);
                     Integer prNumber = prNode.path("number").asInt(1);
@@ -136,9 +149,13 @@ public class GithubHistoricalSyncService {
         if (commitsNode.isArray()) {
             for (JsonNode commitNode : commitsNode) {
                 try {
-                    String rawPayload = objectMapper.writeValueAsString(commitNode);
-                    RawEventLog rawLog = new RawEventLog(companyId, "github_sync", "push", rawPayload);
-                    rawEventLogRepository.save(rawLog);
+                    try {
+                        String rawPayload = objectMapper.writeValueAsString(commitNode);
+                        RawEventLog rawLog = new RawEventLog(companyId, "github", "push", rawPayload);
+                        rawEventLogRepository.save(rawLog);
+                    } catch (Exception logEx) {
+                        log.warn("Could not persist raw log for commit: {}", logEx.getMessage());
+                    }
 
                     String commitSha = commitNode.path("sha").asText(UUID.randomUUID().toString());
                     String commitMessage = commitNode.path("commit").path("message").asText("Historical Commit");

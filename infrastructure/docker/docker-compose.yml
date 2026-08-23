@@ -45,55 +45,55 @@ x-postgres-url: &postgres-url
 
 x-service-defaults: &service-defaults
   restart: unless-stopped
-  networks: [devpulse]
+  networks: [ devpulse ]
 
 # ---- infrastructure --------------------------------------------------------
 services:
   # postgres:
-    # image: postgres:16-alpine
-    # container_name: devpulse-postgres
-    # restart: unless-stopped
-    # networks: [devpulse]
-    # environment:
-      # <<: *postgres-env
-      # POSTGRES_DB: ${POSTGRES_DB:-devpulse}   # the single shared database
-    # ports:
-      # - "5432:5432"
-    # volumes:
-      # - pgdata:/var/lib/postgresql/data
-    # healthcheck:
-      # test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devpulse} -d ${POSTGRES_DB:-devpulse}"]
-      # interval: 10s
-      # timeout: 5s
-      # retries: 5
+  # image: postgres:16-alpine
+  # container_name: devpulse-postgres
+  # restart: unless-stopped
+  # networks: [devpulse]
+  # environment:
+  # <<: *postgres-env
+  # POSTGRES_DB: ${POSTGRES_DB:-devpulse}   # the single shared database
+  # ports:
+  # - "5432:5432"
+  # volumes:
+  # - pgdata:/var/lib/postgresql/data
+  # healthcheck:
+  # test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devpulse} -d ${POSTGRES_DB:-devpulse}"]
+  # interval: 10s
+  # timeout: 5s
+  # retries: 5
 
   # # The ONLY process that runs Flyway. Applies backend/database/migrations to the
   # # shared database, then exits. Services depend on it completing.
   # flyway:
-    # image: flyway/flyway:10-alpine
-    # container_name: devpulse-flyway
-    # networks: [devpulse]
-    # depends_on:
-      # postgres:
-        # condition: service_healthy
-    # command: -connectRetries=10 -baselineOnMigrate=true migrate
-    # environment:
-      # FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
-      # FLYWAY_USER: ${POSTGRES_USER:-devpulse}
-      # FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
-      # FLYWAY_SCHEMAS: public
-    # volumes:
-      # - ../../backend/database/migrations:/flyway/sql:ro
+  # image: flyway/flyway:10-alpine
+  # container_name: devpulse-flyway
+  # networks: [devpulse]
+  # depends_on:
+  # postgres:
+  # condition: service_healthy
+  # command: -connectRetries=10 -baselineOnMigrate=true migrate
+  # environment:
+  # FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
+  # FLYWAY_USER: ${POSTGRES_USER:-devpulse}
+  # FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
+  # FLYWAY_SCHEMAS: public
+  # volumes:
+  # - ../../backend/database/migrations:/flyway/sql:ro
 
   redis:
     image: redis:7-alpine
     container_name: devpulse-redis
     restart: unless-stopped
-    networks: [devpulse]
+    networks: [ devpulse ]
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -102,15 +102,15 @@ services:
     image: rabbitmq:3.13-management-alpine
     container_name: devpulse-rabbitmq
     restart: unless-stopped
-    networks: [devpulse]
+    networks: [ devpulse ]
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-devpulse}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-devpulse}
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # management UI
+      - "5672:5672" # AMQP
+      - "15672:15672" # management UI
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -130,7 +130,7 @@ services:
       auth-service: { condition: service_started }
     environment:
       SERVER_PORT: 8080
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       REDIS_URL: redis://redis:6379
       # Route targets. application.yml defaults these to localhost, which is correct
       # for a native run but points the gateway at ITSELF inside a container — every
@@ -155,9 +155,9 @@ services:
       redis: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8081
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       JWT_EXPIRATION: 3600
       REDIS_URL: redis://redis:6379
       SPRING_FLYWAY_ENABLED: "false"
@@ -175,8 +175,9 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8082
+      GITHUB_APP_NAME: ${GITHUB_APP_NAME:-DevPulseIntegration}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       # Read access for api.github.com. Without it GithubApiClient is
       # unauthenticated: 60 requests/hour, private repos come back 404 (surfacing
@@ -201,7 +202,7 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8083
       SPRING_FLYWAY_ENABLED: "false"
     ports:
@@ -218,7 +219,7 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8084
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -238,7 +239,7 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *rabbitmq-url]
+      <<: [ *postgres-env, *rabbitmq-url ]
       APP_PORT: 8000
       # SQLAlchemy DSN (not JDBC) — analytics-service is Python. Same shared DB.
       # It reads/writes only pr_predictions; it does NOT run migrations.
@@ -247,8 +248,7 @@ services:
       RISK_THRESHOLD: ${RISK_THRESHOLD:-0.7}
     ports:
       - "8000:8000"
-
-# volumes:
+  # volumes:
   # pgdata:
 
 networks:

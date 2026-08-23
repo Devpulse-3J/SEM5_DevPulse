@@ -10,16 +10,23 @@ import com.devpulse.auth.entity.ProjectRole;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ConflictException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
+import com.devpulse.auth.entity.OrganizationInvitation;
+import com.devpulse.auth.repository.OrganizationInvitationRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.ProjectAccessService;
 import com.devpulse.auth.security.RequestContext;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,13 +40,19 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final ProjectAccessService projectAccessService;
+    private final OrganizationInvitationRepository orgInviteRepository;
+    private final JavaMailSender mailSender;
 
     public ProjectMemberServiceImpl(ProjectMemberRepository projectMemberRepository,
                                     UserRepository userRepository,
-                                    ProjectAccessService projectAccessService) {
+                                    ProjectAccessService projectAccessService,
+                                    OrganizationInvitationRepository orgInviteRepository,
+                                    @Autowired(required = false) JavaMailSender mailSender) {
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
+        this.orgInviteRepository = orgInviteRepository;
+        this.mailSender = mailSender;
     }
 
     @Override
@@ -145,28 +158,69 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         if (existing.isPresent()) {
             User target = existing.get();
 
-            // users.email is UNIQUE across the whole table, not per company, so
-            // an address registered to another tenant cannot be reused here and
-            // cannot be silently adopted into this one either.
-            if (target.getCompany() == null
-                    || !target.getCompany().getCompanyId().equals(context.companyId())) {
+            // If individual user has no company yet, assign them to this company
+            if (target.getCompany() == null) {
+                target.setCompany(admin.getCompany());
+                userRepository.save(target);
+            } else if (!target.getCompany().getCompanyId().equals(context.companyId())) {
                 throw new ConflictException(
-                        "That email is already registered to a different company");
+                        "That email is already registered to a different company workspace");
             }
 
             attachToProject(projectId, target, role);
-            log.info("Admin {} invited existing user {} to project {} as {}",
+            log.info("Admin {} invited user {} to project {} as {}",
                     admin.getEmail(), email, projectId, role);
+
+            // Send notification email to existing user
+            String companyName = admin.getCompany() != null ? admin.getCompany().getCompanyName() : "DevPulse Workspace";
+            sendEmail(target.getEmail(),
+                    "You have been added to " + companyName + " on DevPulse",
+                    "Hello " + target.getFullName() + ",\n\n" +
+                    "You have been added to the workspace \"" + companyName + "\" as a " + role.name() + "!\n\n" +
+                    "Log in to DevPulse to start collaborating:\nhttp://localhost:3000/login\n");
+
             return InviteResultResponse.addedExisting(target.getUserId(), email, role.name());
         }
 
-        // Nobody has registered this address, and an invite may only name someone
-        // who already has an account. This method must never write to users:
-        // pre-creating a placeholder here is what used to collide with the UNIQUE
-        // constraint on users.email and fail the whole invite.
-        log.info("Admin {} tried to invite unregistered address {} to project {}",
+        // Unregistered email -> create organization invitation row in DB
+        String token = UUID.randomUUID().toString();
+        OffsetDateTime expiresAt = OffsetDateTime.now().plusDays(7);
+        OrganizationInvitation invitation = new OrganizationInvitation(
+                admin.getCompany(), email, role.name(), token, admin, expiresAt);
+        orgInviteRepository.save(invitation);
+
+        log.info("Admin {} created OrganizationInvitation entity for unregistered address {} for project {}",
                 admin.getEmail(), email, projectId);
-        throw new ResourceNotFoundException("User", email);
+
+        // Send invitation email to unregistered user
+        String companyName = admin.getCompany() != null ? admin.getCompany().getCompanyName() : "DevPulse Workspace";
+        sendEmail(email,
+                "Invitation to join " + companyName + " on DevPulse",
+                "Hello,\n\n" +
+                "You have been invited to join the workspace \"" + companyName + "\" on DevPulse as a " + role.name() + "!\n\n" +
+                "Please click the link below to create your account and accept your workspace invitation:\n" +
+                "http://localhost:3000/accept-invite?token=" + token + "\n\n" +
+                "(This invitation link will expire in 7 days).\n");
+
+        return InviteResultResponse.invitedNew(email, role.name());
+    }
+
+    private void sendEmail(String toEmail, String subject, String body) {
+        if (mailSender == null) {
+            log.info("JavaMailSender not configured; skipping email dispatch to {}", toEmail);
+            return;
+        }
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom("jayasuriyaumaya@gmail.com");
+            message.setTo(toEmail);
+            message.setSubject(subject);
+            message.setText(body);
+            mailSender.send(message);
+            log.info("Email successfully sent to {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
+        }
     }
 
     // -- helpers -------------------------------------------------------------

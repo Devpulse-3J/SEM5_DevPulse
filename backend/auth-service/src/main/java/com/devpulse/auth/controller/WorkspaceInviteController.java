@@ -117,4 +117,15 @@ public class WorkspaceInviteController {
         WorkspaceJoinRequest rejectedRequest = workspaceInviteService.rejectJoinRequest(actor, companyId, requestId);
         return ResponseEntity.ok(rejectedRequest);
     }
+
+    /**
+     * Search company workspaces by name (for individual users looking to join a company).
+     * GET /auth/workspaces/search?query={name}
+     */
+    @GetMapping("/workspaces/search")
+    public ResponseEntity<List<Company>> searchWorkspaces(
+            @RequestParam(value = "query", required = false) String query) {
+        List<Company> companies = workspaceInviteService.searchWorkspaces(query);
+        return ResponseEntity.ok(companies);
+    }
 }

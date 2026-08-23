@@ -8,6 +8,7 @@ import com.devpulse.integration.security.RequestContextResolver;
 import com.devpulse.integration.service.ProjectGithubLinkService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -76,5 +77,23 @@ public class ProjectGithubController {
             @PathVariable("projectId") Integer projectId) {
         RequestContext context = contextResolver.resolve(servletRequest);
         return ResponseEntity.accepted().body(projectGithubLinkService.sync(context, projectId));
+    }
+
+    /** Returns GitHub App OAuth / installation connect URL & direct repository details. */
+    @GetMapping("/connect-url")
+    public ResponseEntity<Map<String, String>> getConnectUrl(
+            HttpServletRequest servletRequest,
+            @PathVariable("projectId") Integer projectId) {
+        String appName = System.getenv().getOrDefault("GITHUB_APP_NAME", "DevPulseIntegration");
+        Map<String, String> info = new HashMap<>();
+        info.put("connectUrl", "https://github.com/apps/" + appName + "/installations/new?state=" + projectId);
+
+        try {
+            RequestContext context = contextResolver.resolve(servletRequest);
+            info.putAll(projectGithubLinkService.getConnectInfo(context, projectId));
+        } catch (Exception e) {
+            // Fallback if header is missing or user has no company
+        }
+        return ResponseEntity.ok(info);
     }
 }

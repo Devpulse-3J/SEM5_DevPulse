@@ -38,16 +38,19 @@ public class ProjectGithubLinkService {
     private final RepoRepository repoRepository;
     private final GithubApiClient githubApiClient;
     private final ProjectAccessService projectAccessService;
+    private final GithubHistoricalSyncService githubHistoricalSyncService;
     private final String webhookCallbackUrl;
 
     public ProjectGithubLinkService(
             RepoRepository repoRepository,
             GithubApiClient githubApiClient,
             ProjectAccessService projectAccessService,
+            GithubHistoricalSyncService githubHistoricalSyncService,
             @Value("${devpulse.public-base-url:http://localhost:8080}") String publicBaseUrl) {
         this.repoRepository = repoRepository;
         this.githubApiClient = githubApiClient;
         this.projectAccessService = projectAccessService;
+        this.githubHistoricalSyncService = githubHistoricalSyncService;
         this.webhookCallbackUrl =
                 publicBaseUrl.replaceAll("/+$", "") + "/api/webhooks/github";
     }
@@ -140,7 +143,6 @@ public class ProjectGithubLinkService {
      * <p>{@code last_synced_at} is deliberately NOT stamped: recording a sync
      * time for a sync that never ran would make the status endpoint lie.
      */
-    @Transactional(readOnly = true)
     public Map<String, Object> sync(RequestContext context, Integer projectId) {
         projectAccessService.requireAdminOnProject(context, projectId);
 
@@ -154,18 +156,29 @@ public class ProjectGithubLinkService {
         }
 
         Repo repo = linked.get();
-        log.info("[NOT IMPLEMENTED] Sync requested by user {} for project {} "
-                        + "(company {}, repo {}). No data was fetched.",
-                context.userId(), projectId, context.companyId(), repo.getFullName());
+        log.info("Executing GitHub historical sync for project {} (company {}, repo {})...",
+                projectId, context.companyId(), repo.getFullName());
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("status", "NOT_IMPLEMENTED");
-        result.put("projectId", projectId);
-        result.put("repo", repo.getFullName());
-        result.put("message", "Sync is not wired up yet. Use POST /api/integrations/github/sync"
-                + "?owner=" + repo.getOwnerName() + "&repo=" + repo.getRepoName()
-                + " to run the existing backfill.");
-        return result;
+        return githubHistoricalSyncService.syncHistoricalProjectData(
+                repo.getOwnerName(), repo.getRepoName(), context.companyId(), projectId);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, String> getConnectInfo(RequestContext context, Integer projectId) {
+        String appName = System.getenv().getOrDefault("GITHUB_APP_NAME", "DevPulseIntegration");
+        Optional<Repo> linked = repoRepository
+                .findByCompanyIdAndProjectId(context.companyId(), projectId)
+                .stream().findFirst();
+
+        Map<String, String> info = new HashMap<>();
+        info.put("connectUrl", "https://github.com/apps/" + appName + "/installations/new?state=" + projectId);
+
+        if (linked.isPresent()) {
+            Repo repo = linked.get();
+            info.put("repoFullName", repo.getFullName());
+            info.put("directWebhookUrl", "https://github.com/" + repo.getFullName() + "/settings/hooks/new");
+        }
+        return info;
     }
 
     /**

@@ -16,6 +16,18 @@ spring:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
   rabbitmq:
     addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:jayasuriyaumaya@gmail.com}
+    password: ${SMTP_PASSWORD:wdlpqmckejfxzeyl}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
 jwt:
   secret: ${JWT_SECRET:devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
   expiration: ${JWT_EXPIRATION:3600}

@@ -7,6 +7,7 @@ import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ConflictException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
+import com.devpulse.auth.repository.OrganizationInvitationRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.ProjectAccessService;
@@ -33,6 +34,7 @@ public class ProjectMemberInviteTest {
 
     private ProjectMemberRepository projectMemberRepository;
     private UserRepository userRepository;
+    private OrganizationInvitationRepository orgInviteRepository;
     private ProjectMemberServiceImpl service;
 
     private RequestContext context;
@@ -42,10 +44,11 @@ public class ProjectMemberInviteTest {
     public void setUp() {
         projectMemberRepository = mock(ProjectMemberRepository.class);
         userRepository = mock(UserRepository.class);
+        orgInviteRepository = mock(OrganizationInvitationRepository.class);
         ProjectAccessService projectAccessService = mock(ProjectAccessService.class);
 
         service = new ProjectMemberServiceImpl(
-                projectMemberRepository, userRepository, projectAccessService);
+                projectMemberRepository, userRepository, projectAccessService, orgInviteRepository, null);
 
         context = new RequestContext(1, COMPANY_ID);
 
@@ -68,14 +71,14 @@ public class ProjectMemberInviteTest {
     }
 
     @Test
-    public void invitingAnUnregisteredEmailIsNotFoundAndCreatesNoUser() {
+    public void invitingAnUnregisteredEmailCreatesOrganizationInviteRecord() {
         when(userRepository.findByEmailIgnoreCase("newcomer@example.com"))
                 .thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class,
-                () -> service.inviteByEmail(context, PROJECT_ID, request("newcomer@example.com")));
+        InviteResultResponse response = service.inviteByEmail(context, PROJECT_ID, request("newcomer@example.com"));
 
-        // The whole point: the users table is untouched.
+        assertEquals(InviteResultResponse.INVITED_NEW_USER, response.getStatus());
+        verify(orgInviteRepository).save(any());
         verify(userRepository, never()).save(any(User.class));
         verify(projectMemberRepository, never()).save(any(ProjectMember.class));
     }
