@@ -58,7 +58,7 @@ public class WebhookEventNormalizer {
             Integer prId = prNode.path("id").asInt(1);
             Integer repoId = root.path("repository").path("id").asInt(1);
 
-            if ("opened".equalsIgnoreCase(action)) {
+            if ("opened".equalsIgnoreCase(action) || "synchronize".equalsIgnoreCase(action) || "reopened".equalsIgnoreCase(action) || "edited".equalsIgnoreCase(action)) {
                 return new PrOpenedEvent(
                         eventId, companyId, projectId, now,
                         prId,
