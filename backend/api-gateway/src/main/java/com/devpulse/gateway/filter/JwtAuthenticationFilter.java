@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
@@ -57,6 +58,13 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     headers.remove(USER_ID_HEADER);
                     headers.remove(COMPANY_ID_HEADER);
                 });
+
+        // CORS preflight requests do not carry application credentials. Let the
+        // gateway's global CORS handler validate the Origin and requested method
+        // instead of rejecting OPTIONS in the JWT layer.
+        if (request.getMethod() == HttpMethod.OPTIONS) {
+            return chain.filter(exchange.mutate().request(forwarded.build()).build());
+        }
 
         // Allow public paths through
         if (isPublicPath(path)) {
