@@ -161,6 +161,10 @@ services:
       JWT_EXPIRATION: 3600
       REDIS_URL: redis://redis:6379
       SPRING_FLYWAY_ENABLED: "false"
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     ports:
       - "8081:8081"
 
@@ -214,8 +218,6 @@ services:
       context: ../../backend
       dockerfile: notification-service/Dockerfile
     container_name: devpulse-notification-service
-    env_file:
-      - ../../backend/notification-service/.env.local
     depends_on:
       # postgres: { condition: service_healthy }
       # flyway: { condition: service_completed_successfully }
@@ -224,6 +226,11 @@ services:
       <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8084
       SPRING_FLYWAY_ENABLED: "false"
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     ports:
       - "8084:8084"
 
