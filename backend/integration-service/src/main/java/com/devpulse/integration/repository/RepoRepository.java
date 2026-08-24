@@ -20,4 +20,11 @@ public interface RepoRepository extends JpaRepository<Repo, Integer> {
      * tenants ever shared a project id.
      */
     List<Repo> findByCompanyIdAndProjectId(Integer companyId, Integer projectId);
+
+    /**
+     * One repository by primary key, constrained to a tenant. Looking it up by
+     * id alone would let a caller read another company's repo, so the detail
+     * endpoint always pairs the id with the caller's company.
+     */
+    Optional<Repo> findByRepoIdAndCompanyId(Integer repoId, Integer companyId);
 }
