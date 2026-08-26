@@ -8,6 +8,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -34,7 +35,7 @@ public class User implements UserDetails {
     private Integer userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id")
     private Company company;
 
     @Column(name = "email", nullable = false, unique = true, length = 320)
@@ -55,6 +56,14 @@ public class User implements UserDetails {
     @Column(name = "jira_account_id", length = 128)
     private String jiraAccountId;
 
+    /**
+     * Set when the account was created by a project invitation rather than by
+     * the person themselves — its password hash is random and unknown, so the
+     * account cannot be used until the password is reset.
+     */
+    @Column(name = "must_reset_password", nullable = false)
+    private boolean mustResetPassword;
+
     @Column(name = "created_at", nullable = false, updatable = false,
             columnDefinition = "timestamptz")
     private OffsetDateTime createdAt;
@@ -62,6 +71,21 @@ public class User implements UserDetails {
     // -- constructors --------------------------------------------------------
 
     public User() {
+    }
+
+    /**
+     * Unlike the sibling entities, User has no parameterised constructor to set
+     * {@code createdAt}, so it would otherwise depend on every call site
+     * remembering to. Hibernate always lists the mapped column in the INSERT, so
+     * a missed set writes an explicit NULL and the column's {@code DEFAULT now()}
+     * never applies — the insert fails the NOT NULL constraint instead.
+     * An explicit value set by the caller is preserved.
+     */
+    @PrePersist
+    void applyCreationTimestamp() {
+        if (createdAt == null) {
+            createdAt = OffsetDateTime.now();
+        }
     }
 
     // -- UserDetails implementation ------------------------------------------
@@ -175,6 +199,14 @@ public class User implements UserDetails {
 
     public void setJiraAccountId(String jiraAccountId) {
         this.jiraAccountId = jiraAccountId;
+    }
+
+    public boolean isMustResetPassword() {
+        return mustResetPassword;
+    }
+
+    public void setMustResetPassword(boolean mustResetPassword) {
+        this.mustResetPassword = mustResetPassword;
     }
 
     public OffsetDateTime getCreatedAt() {

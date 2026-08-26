@@ -24,4 +24,15 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, In
      * Resolves a user's role on a specific project.
      */
     Optional<ProjectMember> findByProjectIdAndUserId(Integer projectId, Integer userId);
+
+    /**
+     * All memberships on one project. Used to render a project's member list.
+     */
+    List<ProjectMember> findByProjectId(Integer projectId);
+
+    /**
+     * Removes every membership on a project. Called before deleting the project
+     * itself so the delete does not depend on the FK's ON DELETE CASCADE.
+     */
+    void deleteByProjectId(Integer projectId);
 }

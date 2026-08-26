@@ -15,9 +15,38 @@ spring:
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
   rabbitmq:
-    addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+    username: ${RABBITMQ_USER:devpulse}
+    password: ${RABBITMQ_PASSWORD:devpulse}
+    addresses: ${RABBITMQ_URL:amqp://devpulse:devpulse@localhost:5672}
+
+devpulse:
+  rabbitmq:
+    exchange: ${DEVPULSE_RABBITMQ_EXCHANGE:devpulse.events}
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+
+github:
+  api:
+    # Key is camelCase to match GithubApiClient's @Value("${github.api.baseUrl}").
+    # @Value does no relaxed binding, so `base-url` here would not resolve.
+    baseUrl: ${GITHUB_API_BASE_URL:https://api.github.com}
+    # Personal access token or GitHub App token. Empty means unauthenticated:
+    # 60 requests/hour and private repositories return 404. The key was missing
+    # entirely before, so GithubApiClient always fell back to no auth.
+    token: ${GITHUB_API_TOKEN:}
+  webhook:
+    # No default: a webhook secret that falls back to a known constant is not a
+    # secret. The service must fail to start rather than validate signatures
+    # against a value that is published in this file.
+    secret: ${GITHUB_WEBHOOK_SECRET}
+  app:
+    # All GitHub App credentials come from the environment. They were previously
+    # committed here as literal defaults; those values are compromised and must
+    # be rotated in the GitHub App settings.
+    id: ${GITHUB_APP_ID:}
+    client-id: ${GITHUB_CLIENT_ID:}
+    client-secret: ${GITHUB_CLIENT_SECRET:}
+    private-key-path: ${GITHUB_PRIVATE_KEY_PATH:classpath:github-private-key.pem}

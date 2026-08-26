@@ -4,9 +4,11 @@ spring:
   application:
     name: notification-service
   datasource:
-    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/devpulse}
-    username: ${POSTGRES_USER:devpulse}
-    password: ${POSTGRES_PASSWORD:devpulse}
+    # Docker injects the Supabase values through POSTGRES_* variables.
+    # No credentials belong in this source-controlled file.
+    url: ${POSTGRES_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
   jpa:
     hibernate:
       # Schema is owned by Flyway (backend/database); validate entities, never modify.
@@ -15,7 +17,20 @@ spring:
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
   rabbitmq:
-    addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+    username: ${RABBITMQ_USER:devpulse}
+    password: ${RABBITMQ_PASSWORD:devpulse}
+    addresses: ${RABBITMQ_URL:amqp://devpulse:devpulse@localhost:5672}
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 management:
   endpoints:
     web:

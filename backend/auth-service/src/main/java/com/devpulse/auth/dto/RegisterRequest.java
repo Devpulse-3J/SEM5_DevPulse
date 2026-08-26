@@ -2,7 +2,6 @@ package com.devpulse.auth.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -21,8 +20,11 @@ public class RegisterRequest {
     @NotBlank(message = "Full name is required")
     private String fullName;
 
-    @NotNull(message = "Company ID is required")
     private Integer companyId;
+
+    private String companyName;
+
+    private Boolean isCompany;
 
     // -- constructors --------------------------------------------------------
 
@@ -34,6 +36,14 @@ public class RegisterRequest {
         this.password = password;
         this.fullName = fullName;
         this.companyId = companyId;
+    }
+
+    public RegisterRequest(String email, String password, String fullName, String companyName) {
+        this.email = email;
+        this.password = password;
+        this.fullName = fullName;
+        this.companyName = companyName;
+        this.isCompany = true;
     }
 
     // -- getters / setters ---------------------------------------------------
@@ -68,5 +78,21 @@ public class RegisterRequest {
 
     public void setCompanyId(Integer companyId) {
         this.companyId = companyId;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public Boolean getIsCompany() {
+        return isCompany;
+    }
+
+    public void setIsCompany(Boolean isCompany) {
+        this.isCompany = isCompany;
     }
 }

@@ -1,0 +1,20 @@
+# ---- Secrets ----
+.env
+
+# ---- Trained models ----
+*.pkl
+*.joblib
+
+# ---- Datasets ----
+*.csv
+*.jsonl
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- Editors ----
+.vscode/
+.idea/

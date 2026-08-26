@@ -16,6 +16,7 @@ import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.JwtService;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -59,24 +60,85 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        // Legacy path. A project invite for an unknown email used to pre-create a
+        // placeholder users row (V8__project_flow_enhancements.sql) so the
+        // membership had something to point at, flagged must_reset_password with a
+        // password hash nobody knows. Rejecting that row as a duplicate would lock
+        // the invitee out of the account created for them, so registration CLAIMS it
+        // instead: same user_id, so the memberships already attached survive.
+        //
+        // Inviting an unregistered address is now a 404 — an invite may only name
+        // someone who already has an account — so nothing creates these rows any
+        // more. The claim path stays only until any pre-existing ones are gone.
+        User invited = userRepository.findByEmail(request.getEmail())
+                .filter(User::isMustResetPassword)
+                .orElse(null);
+        if (invited != null) {
+            return claimInvitedAccount(invited, request);
+        }
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateEmailException(request.getEmail());
         }
 
-        Company company = companyRepository.findById(request.getCompanyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
+        Company company;
+        boolean isAdmin = Boolean.TRUE.equals(request.getIsCompany())
+                || (request.getCompanyName() != null && !request.getCompanyName().isBlank());
+
+        if (isAdmin) {
+            // Registering as a Company -> create new Company and assign ADMIN role
+            Company newCompany = new Company();
+            String name = (request.getCompanyName() != null && !request.getCompanyName().isBlank()) 
+                    ? request.getCompanyName().trim() 
+                    : request.getFullName().trim() + "'s Organization";
+            newCompany.setCompanyName(name);
+            newCompany.setSubscriptionPlan("pro");
+            newCompany.setCreatedAt(OffsetDateTime.now());
+            company = companyRepository.save(newCompany);
+        } else if (request.getCompanyId() != null) {
+            // Joining an existing company by ID
+            company = companyRepository.findById(request.getCompanyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", request.getCompanyId()));
+        } else {
+            // Individual signup without company invite -> company is null until invited or joined
+            company = null;
+        }
 
         User user = new User();
         user.setEmail(request.getEmail());
         user.setFullName(request.getFullName());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setCompany(company);
-        user.setSystemRoleEnum(SystemRole.MEMBER);
+        user.setSystemRoleEnum(isAdmin ? SystemRole.ADMIN : SystemRole.MEMBER);
+        user.setCreatedAt(OffsetDateTime.now());
 
         User savedUser = userRepository.save(user);
         String token = jwtService.generateToken(savedUser);
 
         return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+    }
+
+    /**
+     * Completes an invited-but-unclaimed account: the invitee sets their own name
+     * and password on the row the invite created.
+     * <p>
+     * Company and system role are deliberately NOT taken from the request. The
+     * placeholder already belongs to the company that invited it and carries that
+     * company's project memberships; honouring a {@code companyName} here would move
+     * the user to a new company and orphan those memberships — losing exactly the
+     * access the invite was meant to grant. Keeping the role at what the inviter set
+     * also stops a claim from silently escalating to admin.
+     */
+    private AuthResponse claimInvitedAccount(User invited, RegisterRequest request) {
+        invited.setFullName(request.getFullName());
+        invited.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        // The account now has a password its owner chose, so it is no longer a
+        // placeholder and a second register() must be rejected as a duplicate.
+        invited.setMustResetPassword(false);
+
+        User claimed = userRepository.save(invited);
+        String token = jwtService.generateToken(claimed);
+        return userMapper.toAuthResponse(claimed, token, jwtService.getExpirationSeconds());
     }
 
     @Override

@@ -1,0 +1,61 @@
+Configuration export placement and renaming guide
+=================================================
+
+This archive retains the repository-relative paths. Extract it at the root of
+the project and preserve every filename unless a rename below is explicitly
+called for. Do not commit files containing real credentials.
+
+Source file                                      Store at / rename to
+-----------------------------------------------  -----------------------------------------------
+.github/workflows/pr-checks.yml                  .github/workflows/pr-checks.yml
+infrastructure/docker/docker-compose.yml         infrastructure/docker/docker-compose.yml
+infrastructure/docker/docker-compose.supabase.yml infrastructure/docker/docker-compose.supabase.yml
+infrastructure/docker/.env                       infrastructure/docker/.env
+infrastructure/docker/.env.example               infrastructure/docker/.env.example (template)
+infrastructure/docker/.env.bak                   infrastructure/docker/.env.bak (archive only)
+
+backend/api-gateway/.env                         backend/api-gateway/.env
+backend/api-gateway/.env.local.example           backend/api-gateway/.env.local.example (template)
+backend/api-gateway/.env.local.bak2              backend/api-gateway/.env.local.bak2 (archive only)
+backend/api-gateway/src/main/resources/application.yml backend/api-gateway/src/main/resources/application.yml
+backend/api-gateway/src/test/resources/application-test.yml backend/api-gateway/src/test/resources/application-test.yml
+
+backend/auth-service/.env.local                  backend/auth-service/.env.local
+backend/auth-service/.env.local.example          backend/auth-service/.env.local.example (template)
+backend/auth-service/.env.local.bak              backend/auth-service/.env.local.bak (archive only)
+backend/auth-service/.env.local.bak2             backend/auth-service/.env.local.bak2 (archive only)
+backend/auth-service/src/main/resources/application.yml backend/auth-service/src/main/resources/application.yml
+backend/auth-service/src/test/resources/application-test.yml backend/auth-service/src/test/resources/application-test.yml
+
+backend/integration-service/.env.local           backend/integration-service/.env.local
+backend/integration-service/.env.local.example   backend/integration-service/.env.local.example (template)
+backend/integration-service/src/main/resources/application.yml backend/integration-service/src/main/resources/application.yml
+
+backend/metrics-service/.env.local               backend/metrics-service/.env.local
+backend/metrics-service/.env.local.example       backend/metrics-service/.env.local.example (template)
+backend/metrics-service/src/main/resources/application.yml backend/metrics-service/src/main/resources/application.yml
+
+backend/notification-service/.env.local          backend/notification-service/.env.local
+backend/notification-service/.env.local.example  backend/notification-service/.env.local.example (template)
+backend/notification-service/src/main/resources/application.yml backend/notification-service/src/main/resources/application.yml
+
+backend/analytics-service/.env.local.example     backend/analytics-service/.env.local.example (template)
+backend/analytics-service/training/.env          backend/analytics-service/training/.env
+backend/analytics-service/training/.env.example  backend/analytics-service/training/.env.example (template)
+
+Generated Maven copies (normally do not restore manually; regenerate with the build)
+-------------------------------------------------------------------------------
+backend/api-gateway/target/classes/application.yml backend/api-gateway/target/classes/application.yml
+backend/api-gateway/target/test-classes/application-test.yml backend/api-gateway/target/test-classes/application-test.yml
+backend/auth-service/target/classes/application.yml backend/auth-service/target/classes/application.yml
+backend/auth-service/target/test-classes/application-test.yml backend/auth-service/target/test-classes/application-test.yml
+backend/integration-service/target/classes/application.yml backend/integration-service/target/classes/application.yml
+backend/metrics-service/target/classes/application.yml backend/metrics-service/target/classes/application.yml
+backend/notification-service/target/classes/application.yml backend/notification-service/target/classes/application.yml
+
+Template activation: when you need a missing active local configuration, copy
+the matching *.example file in the same directory and remove only the
+`.example` suffix (for example, `.env.local.example` -> `.env.local`). Fill in
+the required values after copying. Existing active files in this archive should
+keep their current names. Files marked “archive only” are backups and should
+not replace an active file unless deliberately restoring that backup.

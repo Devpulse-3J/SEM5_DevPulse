@@ -1,0 +1,22 @@
+# TEST-SCOPE ONLY — never packaged into the running service.
+# Supplies the properties that have no default in application.yml so the
+# context can start in CI without any external infrastructure.
+
+# JwtService rejects a secret under 32 characters at construction, so this
+# placeholder is deliberately long. It is a throwaway test value, never a
+# real secret.
+devpulse:
+  gateway:
+    jwt:
+      secret: test-only-secret-key-min-32-chars-long-not-a-real-secret
+
+# Redis backs the rate limiter. The connection is lazy, so the context starts
+# without a running Redis; only rate-limited requests would need it.
+spring:
+  data:
+    redis:
+      url: redis://localhost:6379
+
+logging:
+  level:
+    org.springframework.cloud.gateway: WARN

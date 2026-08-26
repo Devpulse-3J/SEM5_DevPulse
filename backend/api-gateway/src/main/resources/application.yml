@@ -1,13 +1,119 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8080
+
 spring:
   application:
     name: api-gateway
+
+  # Backs the rate limiter. Counters must be shared: with in-memory state, two gateway
+  # instances would each see half the traffic and the effective limit would double.
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
+
+  cloud:
+    gateway:
+      routes:
+        
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**,/api/users/**
+          filters:
+            - StripPrefix=1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@userKeyResolver}"
+                redis-rate-limiter.replenishRate: 10    # sustained requests/second
+                redis-rate-limiter.burstCapacity: 20    # short spikes allowed up to this
+                redis-rate-limiter.requestedTokens: 1
+
+        # Project CRUD, members and invitations live in auth-service.
+        #
+        # The GitHub linking endpoints are deliberately NOT under /api/projects:
+        # they are mapped to /api/integrations/projects/{id}/github/** so they
+        # match the integration-service route below. Routes are evaluated in
+        # declaration order and the first match wins, so a
+        # /api/projects/*/github/** path would be swallowed by this route and
+        # never reach integration-service.
+        - id: projects
+          uri: ${AUTH_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/projects/**
+          filters:
+            - StripPrefix=1
+
+        - id: metrics-service
+          uri: ${METRICS_SERVICE_URI:http://localhost:8083}
+          predicates:
+            - Path=/api/metrics/**
+          filters:
+            - StripPrefix=1
+
+        - id : integration-service
+          uri: http://integration-service:8082
+          predicates:
+            - Path=/api/webhooks/**,/api/integrations/**
+          filters:
+            - StripPrefix=1
+
+        - id : notification-service
+          uri: http://notification-service:8084
+          predicates:
+             - Path=/api/alerts/**,/api/notifications/**,/api/slack/**
+          filters:
+             - StripPrefix=1
+
+        # : analytics-service
+        #   uri: http://analytics-service:8000
+        #   predicates:
+        #     - Path=/api/predictions/**
+        #   filters:
+        #     - StripPrefix=1
+
+      globalcors:
+        add-to-simple-url-handler-mapping: true
+        cors-configurations:
+          '[/**]':
+            allowed-origins:
+              - "http://localhost:3000"
+              - "http://10.10.20.92:3000"
+            
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowed-headers: "*"
+            allow-credentials: true
+            max-age: 3600
+
+devpulse:
+  gateway:
+    jwt:
+      secret: ${JWT_SECRET}
+      header: Authorization
+      prefix: "Bearer "
+
 management:
+  endpoint:
+    health:
+      # Needed so /actuator/health names WHICH component is down
+      # (db, rabbit, redis) instead of only an aggregate status.
+      show-details: always
+  info:
+    env:
+      # Required for the info.* properties below to appear on /actuator/info.
+      enabled: true
   endpoints:
+  
     web:
       exposure:
         include: health,info
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.devpulse.gateway: DEBUG

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.FieldError;
@@ -62,6 +63,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UsernameNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleUserNotFound(UsernameNotFoundException ex) {
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid email or password");
+    }
+
+    /**
+     * Handles Spring Security authorization failures.
+     *
+     * <p>Without this, {@code AccessDeniedException} — which
+     * {@code WorkspaceInviteServiceImpl} throws — falls through to
+     * {@link #handleRuntimeException} and is reported as a 500. A caller who
+     * lacks permission must be told 403, not that the server broke.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+        return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     /**

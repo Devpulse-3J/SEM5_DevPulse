@@ -1,83 +1,99 @@
-# DevPulse — full local stack.
+# DevPulse — local stack.
 #
-# Database architecture: ONE shared PostgreSQL database (`devpulse`). It is an
-# infrastructure component, NOT a microservice — every backend service connects
-# to the same database. Its schema is applied by a single dedicated `flyway`
-# migration service (see backend/database/), never by the services themselves.
+# Database architecture: ONE shared PostgreSQL database. It is an infrastructure
+# component, NOT a microservice — every backend service connects to the same
+# database.
+#
+# >>> The database is now hosted on SUPABASE, not in this compose file. <<<
+# The `postgres` and `flyway` services below are COMMENTED OUT rather than
+# deleted, so a fully local stack can be restored by uncommenting them plus the
+# matching `depends_on` entries and the `volumes:` block at the bottom.
+#
+# This does NOT make backend/database/ obsolete. Those Flyway migrations are
+# still the single source of truth for the schema — they now run against
+# Supabase instead of a local container:
+#
+#   docker run --rm -v "$PWD/backend/database/migrations:/flyway/sql" \
+#     flyway/flyway:10-alpine -url="$SUPABASE_JDBC_URL" \
+#     -user="$SUPABASE_DB_USER" -password="$SUPABASE_DB_PASSWORD" \
+#     -baselineOnMigrate=true migrate
 #
 # Secrets come from a .env file next to this compose file — copy .env.example to
 # .env and fill it in. Never commit .env.
 #
-# Infra (postgres/redis/rabbitmq/flyway) runs today. The service containers each
-# require a Dockerfile in backend/<service>/, which does not exist yet — until
-# then, bring up only infra + migrations:
-#   docker compose up -d postgres redis rabbitmq flyway
+# Bring up the remaining local infra with:
+#   docker compose up -d redis rabbitmq
 
 name: devpulse
 
 # ---- shared snippets -------------------------------------------------------
+# Credentials for the shared database. SUPABASE_* wins when set in .env, which
+# is how this project actually runs — the local `postgres` service below is
+# commented out, so the devpulse fallbacks only apply if someone turns it back on.
 x-postgres-env: &postgres-env
-  POSTGRES_USER: ${POSTGRES_USER:-devpulse}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
+  POSTGRES_USER: ${SUPABASE_USER:-devpulse}
+  POSTGRES_PASSWORD: ${SUPABASE_PASSWORD:-devpulse}
 
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_USER:-devpulse}:${RABBITMQ_PASSWORD:-devpulse}@rabbitmq:5672
 
-# The shared database URL (JDBC form) reused by every Java service.
+# The shared database URL (JDBC form) reused by every Java service. Pointing at
+# the container host `postgres` cannot work while that service is commented out;
+# SUPABASE_JDBC_URL from .env is the real target.
 x-postgres-url: &postgres-url
-  POSTGRES_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
+  POSTGRES_URL: ${SUPABASE_JDBC_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}}
 
 x-service-defaults: &service-defaults
   restart: unless-stopped
-  networks: [devpulse]
+  networks: [ devpulse ]
 
 # ---- infrastructure --------------------------------------------------------
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: devpulse-postgres
-    restart: unless-stopped
-    networks: [devpulse]
-    environment:
-      <<: *postgres-env
-      POSTGRES_DB: ${POSTGRES_DB:-devpulse}   # the single shared database
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devpulse} -d ${POSTGRES_DB:-devpulse}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # postgres:
+  # image: postgres:16-alpine
+  # container_name: devpulse-postgres
+  # restart: unless-stopped
+  # networks: [devpulse]
+  # environment:
+  # <<: *postgres-env
+  # POSTGRES_DB: ${POSTGRES_DB:-devpulse}   # the single shared database
+  # ports:
+  # - "5432:5432"
+  # volumes:
+  # - pgdata:/var/lib/postgresql/data
+  # healthcheck:
+  # test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devpulse} -d ${POSTGRES_DB:-devpulse}"]
+  # interval: 10s
+  # timeout: 5s
+  # retries: 5
 
-  # The ONLY process that runs Flyway. Applies backend/database/migrations to the
-  # shared database, then exits. Services depend on it completing.
-  flyway:
-    image: flyway/flyway:10-alpine
-    container_name: devpulse-flyway
-    networks: [devpulse]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: -connectRetries=10 -baselineOnMigrate=true migrate
-    environment:
-      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
-      FLYWAY_USER: ${POSTGRES_USER:-devpulse}
-      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
-      FLYWAY_SCHEMAS: public
-    volumes:
-      - ../../backend/database/migrations:/flyway/sql:ro
+  # # The ONLY process that runs Flyway. Applies backend/database/migrations to the
+  # # shared database, then exits. Services depend on it completing.
+  # flyway:
+  # image: flyway/flyway:10-alpine
+  # container_name: devpulse-flyway
+  # networks: [devpulse]
+  # depends_on:
+  # postgres:
+  # condition: service_healthy
+  # command: -connectRetries=10 -baselineOnMigrate=true migrate
+  # environment:
+  # FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
+  # FLYWAY_USER: ${POSTGRES_USER:-devpulse}
+  # FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-devpulse}
+  # FLYWAY_SCHEMAS: public
+  # volumes:
+  # - ../../backend/database/migrations:/flyway/sql:ro
 
   redis:
     image: redis:7-alpine
     container_name: devpulse-redis
     restart: unless-stopped
-    networks: [devpulse]
+    networks: [ devpulse ]
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -86,15 +102,15 @@ services:
     image: rabbitmq:3.13-management-alpine
     container_name: devpulse-rabbitmq
     restart: unless-stopped
-    networks: [devpulse]
+    networks: [ devpulse ]
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-devpulse}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-devpulse}
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # management UI
+      - "5672:5672" # AMQP
+      - "15672:15672" # management UI
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -114,8 +130,16 @@ services:
       auth-service: { condition: service_started }
     environment:
       SERVER_PORT: 8080
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       REDIS_URL: redis://redis:6379
+      # Route targets. application.yml defaults these to localhost, which is correct
+      # for a native run but points the gateway at ITSELF inside a container — every
+      # proxied call then fails with "Connection refused: localhost/127.0.0.1:<port>".
+      AUTH_SERVICE_URI: http://auth-service:8081
+      INTEGRATION_SERVICE_URI: http://integration-service:8082
+      METRICS_SERVICE_URI: http://metrics-service:8083
+      NOTIFICATION_SERVICE_URI: http://notification-service:8084
+      ANALYTICS_SERVICE_URI: http://analytics-service:8000
     ports:
       - "8080:8080"
 
@@ -126,17 +150,21 @@ services:
       dockerfile: auth-service/Dockerfile
     container_name: devpulse-auth-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8081
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       JWT_EXPIRATION: 3600
       REDIS_URL: redis://redis:6379
       SPRING_FLYWAY_ENABLED: "false"
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     ports:
       - "8081:8081"
 
@@ -147,13 +175,18 @@ services:
       dockerfile: integration-service/Dockerfile
     container_name: devpulse-integration-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8082
+      GITHUB_APP_NAME: ${GITHUB_APP_NAME:-DevPulseIntegration}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      # Read access for api.github.com. Without it GithubApiClient is
+      # unauthenticated: 60 requests/hour, private repos come back 404 (surfacing
+      # as a 502 from /github/link), and createWebhook cannot authenticate.
+      GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
       JIRA_WEBHOOK_SECRET: ${JIRA_WEBHOOK_SECRET:-}
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
@@ -169,11 +202,11 @@ services:
       dockerfile: metrics-service/Dockerfile
     container_name: devpulse-metrics-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8083
       SPRING_FLYWAY_ENABLED: "false"
     ports:
@@ -186,18 +219,18 @@ services:
       dockerfile: notification-service/Dockerfile
     container_name: devpulse-notification-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *postgres-url, *rabbitmq-url]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
       SERVER_PORT: 8084
+      SPRING_FLYWAY_ENABLED: "false"
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SPRING_FLYWAY_ENABLED: "false"
     ports:
       - "8084:8084"
 
@@ -206,11 +239,11 @@ services:
     build: ../../backend/analytics-service
     container_name: devpulse-analytics-service
     depends_on:
-      postgres: { condition: service_healthy }
-      flyway: { condition: service_completed_successfully }
+      # postgres: { condition: service_healthy }
+      # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [*postgres-env, *rabbitmq-url]
+      <<: [ *postgres-env, *rabbitmq-url ]
       APP_PORT: 8000
       # SQLAlchemy DSN (not JDBC) — analytics-service is Python. Same shared DB.
       # It reads/writes only pr_predictions; it does NOT run migrations.
@@ -219,9 +252,8 @@ services:
       RISK_THRESHOLD: ${RISK_THRESHOLD:-0.7}
     ports:
       - "8000:8000"
-
-volumes:
-  pgdata:
+  # volumes:
+  # pgdata:
 
 networks:
   devpulse:

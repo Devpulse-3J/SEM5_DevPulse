@@ -1,0 +1,61 @@
+# DevPulse — Supabase override.
+#
+# The base compose file assumes a local `postgres` container plus a `flyway`
+# container that migrates it. We use Supabase instead, so this override:
+#
+#   1. Repoints every DB-using service at the Supabase pooler.
+#   2. Drops the `postgres` / `flyway` dependencies, which no longer exist.
+#      `!override` REPLACES depends_on — a plain map would merge and the dead
+#      postgres/flyway keys would survive.
+#
+# Migrations are NOT run by compose here: the schema is already applied to
+# Supabase. Apply new migrations with a one-off Flyway run pointed at
+# SUPABASE_JDBC_URL — never let a service migrate the shared DB.
+#
+# Usage (note: do NOT list postgres or flyway):
+#   docker compose -f docker-compose.yml -f docker-compose.supabase.yml \
+#     up -d redis rabbitmq auth-service api-gateway integration-service notification-service
+
+services:
+  auth-service:
+    depends_on: !override
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
+
+  integration-service:
+    depends_on: !override
+      rabbitmq: { condition: service_healthy }
+    environment:
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
+
+  metrics-service:
+    depends_on: !override
+      rabbitmq: { condition: service_healthy }
+    environment:
+      POSTGRES_URL: "jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0&preparedStatementCacheQueries=0"
+      POSTGRES_USER: postgres.sdehhcyghzkwinvhgmjj
+      POSTGRES_PASSWORD: cupcake@jjj230
+
+  notification-service:
+    depends_on: !override
+      rabbitmq: { condition: service_healthy }
+    environment:
+      POSTGRES_URL: ${SUPABASE_JDBC_URL}
+      POSTGRES_USER: ${SUPABASE_USER}
+      POSTGRES_PASSWORD: ${SUPABASE_PASSWORD}
+
+  analytics-service:
+    depends_on: !override
+      rabbitmq: { condition: service_healthy }
+    environment:
+      # SQLAlchemy DSN, not JDBC — analytics-service is Python.
+      # NOTE: the password contains '@', which must be percent-encoded (%40) or
+      # the DSN parser treats it as the start of the host. Set SUPABASE_PASSWORD_URLENC
+      # in .env to the encoded form.
+      POSTGRES_URL: postgresql://postgres.sdehhcyghzkwinvhgmjj:cupcake%40jjj230@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
