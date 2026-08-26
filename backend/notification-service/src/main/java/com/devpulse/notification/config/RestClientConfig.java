@@ -1,4 +1,4 @@
-package com.devpulse.integration.config;
+package com.devpulse.notification.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
