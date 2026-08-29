@@ -193,6 +193,9 @@ services:
       # unauthenticated: 60 requests/hour, private repos come back 404 (surfacing
       # as a 502 from /github/link), and createWebhook cannot authenticate.
       GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
+      ATLASSIAN_CLIENT_ID: ${ATLASSIAN_CLIENT_ID:-devpulse-jira-client-id}
+      ATLASSIAN_CLIENT_SECRET: ${ATLASSIAN_CLIENT_SECRET:-}
+      ATLASSIAN_REDIRECT_URI: ${ATLASSIAN_REDIRECT_URI:-http://localhost:8080/api/integrations/jira/oauth/callback}
       JIRA_WEBHOOK_SECRET: ${JIRA_WEBHOOK_SECRET:-}
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
