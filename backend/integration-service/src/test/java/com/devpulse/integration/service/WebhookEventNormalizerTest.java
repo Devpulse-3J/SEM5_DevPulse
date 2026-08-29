@@ -32,6 +32,39 @@ class WebhookEventNormalizerTest {
     }
 
     @Test
+    void testNormalizePrOpenedCarriesBodyAndAuthorAssociation() {
+        // Both feed ML features downstream: body -> pull_requests.description,
+        // author_association -> pull_requests.author_association.
+        String json = "{\"action\":\"opened\",\"pull_request\":{\"id\":100,\"number\":12,"
+                + "\"title\":\"Feature PR\",\"body\":\"Adds the thing.\","
+                + "\"author_association\":\"CONTRIBUTOR\",\"user\":{\"id\":5},"
+                + "\"base\":{\"ref\":\"main\"},\"draft\":false,\"additions\":50,"
+                + "\"deletions\":10,\"changed_files\":3},\"repository\":{\"id\":77}}";
+
+        PrOpenedEvent prOpened = (PrOpenedEvent) normalizer.normalize("github", "pull_request", 1, json);
+
+        assertNotNull(prOpened);
+        assertEquals("Adds the thing.", prOpened.getBody());
+        assertEquals("CONTRIBUTOR", prOpened.getAuthorAssociation());
+    }
+
+    @Test
+    void testNormalizePrOpenedWithoutBodyLeavesItNull() {
+        // GitHub omits "body" entirely for a description-less PR. It must stay
+        // null rather than becoming the string "null" or an empty string.
+        String json = "{\"action\":\"opened\",\"pull_request\":{\"id\":100,\"number\":12,"
+                + "\"title\":\"Feature PR\",\"user\":{\"id\":5},\"base\":{\"ref\":\"main\"},"
+                + "\"draft\":false,\"additions\":50,\"deletions\":10,\"changed_files\":3},"
+                + "\"repository\":{\"id\":77}}";
+
+        PrOpenedEvent prOpened = (PrOpenedEvent) normalizer.normalize("github", "pull_request", 1, json);
+
+        assertNotNull(prOpened);
+        assertNull(prOpened.getBody());
+        assertNull(prOpened.getAuthorAssociation());
+    }
+
+    @Test
     void testNormalizePrMergedEvent() {
         String json = "{\"action\":\"closed\",\"pull_request\":{\"id\":100,\"merged\":true},\"repository\":{\"id\":77}}";
 

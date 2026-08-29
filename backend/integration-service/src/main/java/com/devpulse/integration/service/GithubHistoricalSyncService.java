@@ -110,13 +110,16 @@ public class GithubHistoricalSyncService {
                     int additions = prNode.path("additions").asInt(0);
                     int deletions = prNode.path("deletions").asInt(0);
                     int changedFiles = prNode.path("changed_files").asInt(0);
+                    String authorAssociation = prNode.path("author_association").asText(null);
 
                     // Publish PrOpenedEvent
                     PrOpenedEvent openedEvent = new PrOpenedEvent(
                             UUID.randomUUID().toString(), companyId, projectId, Instant.now(),
                             prId, repoEntity.getRepoId(), prNumber, title, authorId,
-                            baseRef, isDraft, additions, deletions, changedFiles
+                            baseRef, isDraft, additions, deletions, changedFiles,
+                            authorAssociation
                     );
+                    openedEvent.setBody(prNode.path("body").asText(null));
                     eventPublisherService.publishEvent(openedEvent);
                     prsSynced++;
 

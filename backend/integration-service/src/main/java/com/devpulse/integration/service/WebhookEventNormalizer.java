@@ -59,7 +59,7 @@ public class WebhookEventNormalizer {
             Integer repoId = root.path("repository").path("id").asInt(1);
 
             if ("opened".equalsIgnoreCase(action)) {
-                return new PrOpenedEvent(
+                PrOpenedEvent openedEvent = new PrOpenedEvent(
                         eventId, companyId, projectId, now,
                         prId,
                         repoId,
@@ -70,8 +70,11 @@ public class WebhookEventNormalizer {
                         prNode.path("draft").asBoolean(false),
                         prNode.path("additions").asInt(0),
                         prNode.path("deletions").asInt(0),
-                        prNode.path("changed_files").asInt(0)
+                        prNode.path("changed_files").asInt(0),
+                        prNode.path("author_association").asText(null)
                 );
+                openedEvent.setBody(prNode.path("body").asText(null));
+                return openedEvent;
             } else if ("closed".equalsIgnoreCase(action)) {
                 boolean isMerged = prNode.path("merged").asBoolean(false);
                 if (isMerged) {

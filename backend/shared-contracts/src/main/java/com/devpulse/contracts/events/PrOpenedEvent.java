@@ -13,6 +13,9 @@ public class PrOpenedEvent extends BaseEvent {
     private int linesAdded;
     private int linesDeleted;
     private int filesChanged;
+    private String authorAssociation;
+    /** The PR description ("body" in GitHub's payload). Null when omitted. */
+    private String body;
 
     public PrOpenedEvent() {
         super();
@@ -22,6 +25,15 @@ public class PrOpenedEvent extends BaseEvent {
                          Integer prId, Integer repoId, Integer githubPrNumber, String title,
                          Integer authorId, String baseBranch, boolean draft,
                          int linesAdded, int linesDeleted, int filesChanged) {
+        this(eventId, companyId, projectId, timestamp, prId, repoId, githubPrNumber, title,
+                authorId, baseBranch, draft, linesAdded, linesDeleted, filesChanged, null);
+    }
+
+    public PrOpenedEvent(String eventId, Integer companyId, Integer projectId, Instant timestamp,
+                         Integer prId, Integer repoId, Integer githubPrNumber, String title,
+                         Integer authorId, String baseBranch, boolean draft,
+                         int linesAdded, int linesDeleted, int filesChanged,
+                         String authorAssociation) {
         super(eventId, companyId, projectId, "pr.opened", timestamp);
         this.prId = prId;
         this.repoId = repoId;
@@ -33,6 +45,7 @@ public class PrOpenedEvent extends BaseEvent {
         this.linesAdded = linesAdded;
         this.linesDeleted = linesDeleted;
         this.filesChanged = filesChanged;
+        this.authorAssociation = authorAssociation;
     }
 
     public Integer getPrId() { return prId; }
@@ -64,4 +77,10 @@ public class PrOpenedEvent extends BaseEvent {
 
     public int getFilesChanged() { return filesChanged; }
     public void setFilesChanged(int filesChanged) { this.filesChanged = filesChanged; }
+
+    public String getAuthorAssociation() { return authorAssociation; }
+    public void setAuthorAssociation(String authorAssociation) { this.authorAssociation = authorAssociation; }
+
+    public String getBody() { return body; }
+    public void setBody(String body) { this.body = body; }
 }

@@ -34,6 +34,9 @@ public class PullRequestEntity {
     @Column(nullable = false, length = 1024)
     private String title;
 
+    @Column(columnDefinition = "text")
+    private String description;
+
     @Column(name = "author_id")
     private Integer authorId;
 
@@ -54,6 +57,9 @@ public class PullRequestEntity {
 
     @Column(name = "files_changed", nullable = false)
     private int filesChanged;
+
+    @Column(name = "author_association", length = 30)
+    private String authorAssociation;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -96,6 +102,8 @@ public class PullRequestEntity {
     public Integer getGithubPrNumber() { return githubPrNumber; }
     public void setGithubPrNumber(Integer githubPrNumber) { this.githubPrNumber = githubPrNumber; }
     public void setTitle(String title) { this.title = title; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
     public void setAuthorId(Integer authorId) { this.authorId = authorId; }
     public void setBaseBranch(String baseBranch) { this.baseBranch = baseBranch; }
     public void setDraft(boolean draft) { this.draft = draft; }
@@ -103,6 +111,8 @@ public class PullRequestEntity {
     public void setLinesAdded(int linesAdded) { this.linesAdded = linesAdded; }
     public void setLinesDeleted(int linesDeleted) { this.linesDeleted = linesDeleted; }
     public void setFilesChanged(int filesChanged) { this.filesChanged = filesChanged; }
+    public String getAuthorAssociation() { return authorAssociation; }
+    public void setAuthorAssociation(String authorAssociation) { this.authorAssociation = authorAssociation; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public void setMergedAt(Instant mergedAt) { this.mergedAt = mergedAt; }
     public void setClosedAt(Instant closedAt) { this.closedAt = closedAt; }

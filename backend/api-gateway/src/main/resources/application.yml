@@ -64,12 +64,14 @@ spring:
           filters:
              - StripPrefix=1
 
-        # : analytics-service
-        #   uri: http://analytics-service:8000
-        #   predicates:
-        #     - Path=/api/predictions/**
-        #   filters:
-        #     - StripPrefix=1
+        # No StripPrefix here, unlike the routes above: analytics-service is
+        # FastAPI and serves its routes at /api/analytics/** already, so the
+        # path must reach it intact. Stripping would forward /analytics/** and
+        # every request would 404.
+        - id: analytics-service
+          uri: ${ANALYTICS_SERVICE_URI:http://localhost:8000}
+          predicates:
+            - Path=/api/analytics/**
 
       globalcors:
         add-to-simple-url-handler-mapping: true
