@@ -60,7 +60,7 @@ spring:
         - id : notification-service
           uri: http://notification-service:8084
           predicates:
-             - Path=/api/alerts/**,/api/notifications/**
+             - Path=/api/alerts/**,/api/notifications/**,/api/slack/**
           filters:
              - StripPrefix=1
 
@@ -72,10 +72,12 @@ spring:
         #     - StripPrefix=1
 
       globalcors:
+        add-to-simple-url-handler-mapping: true
         cors-configurations:
           '[/**]':
             allowed-origins:
               - "http://localhost:3000"
+              - "http://10.10.20.92:3000"
             
             allowed-methods:
               - GET

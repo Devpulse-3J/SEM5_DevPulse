@@ -10,6 +10,7 @@ import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -71,9 +72,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
-        } catch (JwtException e) {
-            // Token is invalid / expired — proceed without authentication.
-            // Spring Security will return 401 for protected endpoints.
+        } catch (JwtException | UsernameNotFoundException e) {
+            // Token is invalid / expired, or it belongs to a user that no longer
+            // exists — proceed without authentication. This is important for
+            // public login/register requests that may carry a stale token.
+            // Spring Security will still reject protected endpoints.
         }
 
         filterChain.doFilter(request, response);
