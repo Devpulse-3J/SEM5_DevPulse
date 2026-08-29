@@ -32,6 +32,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/login",
             "/api/auth/refresh",
             "/api/webhooks/",        // GitHub / Jira webhooks use HMAC, not JWT
+            "/api/integrations/jira/", // Jira integration status, disconnect & oauth
+            "/api/slack/",           // Slack integration & oauth
             "/actuator/health",
             "/actuator/info"
     );

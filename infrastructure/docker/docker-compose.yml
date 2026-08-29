@@ -43,9 +43,14 @@ x-rabbitmq-url: &rabbitmq-url
 x-postgres-url: &postgres-url
   POSTGRES_URL: ${SUPABASE_JDBC_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-devpulse}}
 
+x-java-env: &java-env
+  JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+
 x-service-defaults: &service-defaults
   restart: unless-stopped
   networks: [ devpulse ]
+  environment:
+    JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
 
 # ---- infrastructure --------------------------------------------------------
 services:
@@ -129,6 +134,7 @@ services:
       redis: { condition: service_healthy }
       auth-service: { condition: service_started }
     environment:
+      <<: *java-env
       SERVER_PORT: 8080
       JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       REDIS_URL: redis://redis:6379
@@ -155,7 +161,7 @@ services:
       redis: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url, *java-env ]
       SERVER_PORT: 8081
       JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       JWT_EXPIRATION: 3600
@@ -179,14 +185,17 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url, *java-env ]
       SERVER_PORT: 8082
       GITHUB_APP_NAME: ${GITHUB_APP_NAME:-DevPulseIntegration}
-      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-devpulse-integration-service}
       # Read access for api.github.com. Without it GithubApiClient is
       # unauthenticated: 60 requests/hour, private repos come back 404 (surfacing
       # as a 502 from /github/link), and createWebhook cannot authenticate.
       GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
+      ATLASSIAN_CLIENT_ID: ${ATLASSIAN_CLIENT_ID:-devpulse-jira-client-id}
+      ATLASSIAN_CLIENT_SECRET: ${ATLASSIAN_CLIENT_SECRET:-}
+      ATLASSIAN_REDIRECT_URI: ${ATLASSIAN_REDIRECT_URI:-http://localhost:8080/api/integrations/jira/oauth/callback}
       JIRA_WEBHOOK_SECRET: ${JIRA_WEBHOOK_SECRET:-}
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
@@ -206,7 +215,7 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url, *java-env ]
       SERVER_PORT: 8083
       SPRING_FLYWAY_ENABLED: "false"
     ports:
@@ -223,7 +232,7 @@ services:
       # flyway: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
     environment:
-      <<: [ *postgres-env, *postgres-url, *rabbitmq-url ]
+      <<: [ *postgres-env, *postgres-url, *rabbitmq-url, *java-env ]
       SERVER_PORT: 8084
       SPRING_FLYWAY_ENABLED: "false"
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
