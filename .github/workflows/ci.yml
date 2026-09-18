@@ -1,0 +1,130 @@
+name: CI
+
+# Fast feedback on every push, independent of the PR gate.
+#
+# `pr-checks.yml` already runs a heavier suite (full `mvn verify`, six Docker
+# builds, a live Flyway migration) but only on pull requests targeting `dev`.
+# This workflow instead runs on every push — direct commits to `main`/`dev`
+# included — and adds two checks pr-checks does not do: repo-wide secret
+# scanning and a Python dependency vulnerability audit. It intentionally
+# skips the Docker/migration jobs; those stay PR-gated so every push doesn't
+# pay for six image builds.
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - 'feature/**'
+      - 'fix/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================
+  # Job 1: Java unit tests
+  # ============================================================
+  backend-unit-tests:
+    name: Backend unit tests (Java)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # `test` (not `verify`/`package`) is enough for push-level feedback —
+      # it compiles and runs every unit test across all modules without
+      # spending time packaging jars, which the PR gate already covers.
+      - name: Run unit tests across all modules
+        run: mvn -B test
+        working-directory: backend
+        env:
+          JWT_SECRET: test-secret-key-min-32-chars-for-ci-testing-only
+          POSTGRES_URL: jdbc:postgresql://localhost:5432/devpulse
+          POSTGRES_USER: devpulse
+          POSTGRES_PASSWORD: devpulse
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-backend-test-reports
+          path: backend/**/target/surefire-reports/
+          retention-days: 7
+
+  # ============================================================
+  # Job 2: Python unit tests + dependency audit
+  # ============================================================
+  analytics-unit-tests:
+    name: Analytics service (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/analytics-service/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend/analytics-service
+
+      - name: Run tests (if any exist)
+        run: |
+          if find tests -name '*.py' -not -name '__init__.py' | grep -q .; then
+            pip install pytest
+            pytest tests/ -v
+          else
+            echo "No tests yet — skipping"
+          fi
+        working-directory: backend/analytics-service
+
+      # requirements.txt is deliberately unpinned today (see CLAUDE.md), so
+      # this audits whatever versions actually get resolved rather than a
+      # locked set. Advisory only — a known CVE shouldn't block every push
+      # on a project that hasn't pinned its dependencies yet.
+      - name: Audit Python dependencies for known vulnerabilities
+        run: |
+          pip install pip-audit
+          pip-audit --progress-spinner=off || echo "::warning::pip-audit found issues — review above output"
+        working-directory: backend/analytics-service
+
+  # ============================================================
+  # Job 3: Secret scanning across the whole repo
+  # ============================================================
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # gitleaks-action is free for public repos and for personal-account
+      # private repos. This repo is under the Devpulse-3J organization — if
+      # it's ever made private, this step needs a GITLEAKS_LICENSE secret
+      # (see https://gitleaks.io/products.html) or it will fail to run.
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
