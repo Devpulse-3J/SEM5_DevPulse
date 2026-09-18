@@ -119,12 +119,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      # gitleaks-action is free for public repos and for personal-account
-      # private repos. This repo is under the Devpulse-3J organization — if
-      # it's ever made private, this step needs a GITLEAKS_LICENSE secret
-      # (see https://gitleaks.io/products.html) or it will fail to run.
+      # gitleaks/gitleaks-action now requires a paid GITLEAKS_LICENSE for any
+      # organization-owned repo (public or private) — Devpulse-3J is an org,
+      # so the wrapper action fails here. The underlying gitleaks binary is
+      # still MIT-licensed and free for any repo; this installs and runs it
+      # directly instead of going through the wrapper.
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.21.2"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        run: ./gitleaks detect --source . -v --redact
