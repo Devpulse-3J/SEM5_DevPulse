@@ -16,6 +16,8 @@ CLAUDE.md
 # keep committed templates
 !.env.example
 !.env.local.example
+env.md
+finalenv.md
 
 # ---- Java / Maven ----
 target/

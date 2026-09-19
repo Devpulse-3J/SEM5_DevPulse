@@ -6,14 +6,18 @@ name: CD
 # service's Docker image and publish it to GitHub Container Registry (GHCR),
 # tagged with both the commit SHA and `latest`.
 #
-# Deploy target: a Linux EC2 instance (x86_64/amd64 — matches what GitHub's
-# runners build by default, so no cross-arch build step is needed). The
-# `deploy` job below SSHes in and does a `docker compose pull && up -d`.
+# Deploy target: a Linux EC2 instance. The `deploy` job SSHes in, pulls the
+# repo, builds each service image on the instance (the compose file uses
+# `build:`, not `image:`), and recreates the containers. The GHCR images from
+# `build-and-push` are not what runs on the instance; that job acts as a gate
+# proving every Dockerfile builds before anything is deployed.
 #
 # One-time setup on the EC2 instance, before this job can run for real:
-#   - Docker Engine + the Compose plugin installed.
-#   - This repo (or at minimum infrastructure/docker/) checked out at
-#     DEPLOY_APP_DIR.
+#   - Docker Engine, Compose v2.24+ and buildx 0.17+ installed (the versions
+#     bundled with Amazon Linux 2023 are too old; see ~/.docker/cli-plugins).
+#   - This repo checked out at DEPLOY_APP_DIR, on `main`.
+#   - A real `.env` at DEPLOY_APP_DIR/.env (gitignored; created by hand).
+#   - Swap configured; a 1 GB instance cannot run the whole stack.
 #   - Security group allows inbound SSH (22) from GitHub's runner IP ranges,
 #     or from 0.0.0.0/0 relying on key-based auth — GitHub Actions runners
 #     don't have static IPs.
@@ -165,31 +169,44 @@ jobs:
                                # Settings → Environments → production
 
     steps:
-      # ghcr.io packages pushed under an org are private by default, so the
-      # EC2 instance needs its own login before `docker compose pull` can
-      # fetch them. GITHUB_TOKEN is scoped to this run/repo and expires when
-      # the job ends — enough for a one-shot login+pull, nothing persists.
-      # This step never touches Supabase or backend/database/ — migrations
-      # are run by hand, separately.
+      # The compose services use `build:` (no `image:`), so the instance builds
+      # from its own checkout — `docker compose pull` would do nothing. Images
+      # are built one service at a time to keep memory use down, then
+      # `up --no-build` recreates only the containers whose image changed.
+      # `.env` lives at the repo root on the instance (gitignored, created by
+      # hand), so it is passed with --env-file; without it notification-service
+      # gets no database settings. This step never touches Supabase or
+      # backend/database/ — migrations are run by hand, separately.
       - name: Deploy over SSH to EC2
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GITHUB_ACTOR,GITHUB_TOKEN,DEPLOY_APP_DIR
+          command_timeout: 25m
+          envs: DEPLOY_APP_DIR
           script: |
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            set -e
             cd "$DEPLOY_APP_DIR"
             git pull --ff-only
-            docker compose -f infrastructure/docker/docker-compose.yml \
-                           -f infrastructure/docker/docker-compose.supabase.yml \
-                           pull
-            docker compose -f infrastructure/docker/docker-compose.yml \
-                           -f infrastructure/docker/docker-compose.supabase.yml \
-                           up -d
+            test -f .env || { echo "Missing $DEPLOY_APP_DIR/.env on the instance"; exit 1; }
+            C="docker compose --env-file .env -f infrastructure/docker/docker-compose.yml -f infrastructure/docker/docker-compose.supabase.yml"
+            for s in analytics-service api-gateway auth-service integration-service metrics-service notification-service; do
+              $C build "$s"
+            done
+            $C up -d --no-build
             docker image prune -f
+
+            # Fail the run if the gateway never comes up healthy.
+            for i in $(seq 1 36); do
+              if curl -fsS -m 5 http://localhost:8080/actuator/health >/dev/null; then
+                echo "Gateway healthy after $((i * 5))s"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "Gateway not healthy after 180s"
+            $C ps
+            exit 1
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
