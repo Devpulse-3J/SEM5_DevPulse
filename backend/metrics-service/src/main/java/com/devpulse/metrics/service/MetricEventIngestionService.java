@@ -61,6 +61,7 @@ public class MetricEventIngestionService {
         pullRequest.setGithubPrId(event.getPrId().longValue());
         pullRequest.setGithubPrNumber(event.getGithubPrNumber());
         pullRequest.setTitle(event.getTitle());
+        pullRequest.setDescription(event.getBody());
         pullRequest.setAuthorId(referenceRepository
                 .resolveUserId(event.getCompanyId(), event.getAuthorId()).orElse(null));
         pullRequest.setBaseBranch(blankToDefault(event.getBaseBranch(), "main"));
@@ -69,6 +70,7 @@ public class MetricEventIngestionService {
         pullRequest.setLinesAdded(Math.max(0, event.getLinesAdded()));
         pullRequest.setLinesDeleted(Math.max(0, event.getLinesDeleted()));
         pullRequest.setFilesChanged(Math.max(0, event.getFilesChanged()));
+        pullRequest.setAuthorAssociation(event.getAuthorAssociation());
         pullRequest.setCreatedAt(timestamp(event.getTimestamp()));
         pullRequestRepository.save(pullRequest);
     }
