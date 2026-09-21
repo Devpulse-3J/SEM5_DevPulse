@@ -8,13 +8,15 @@ pydantic
 pydantic-settings
 
 # --- Data processing ---
-pandas
-numpy
+# Pinned to the versions stale_pr_model.pkl was trained and tested with: a
+# newer scikit-learn/pandas loads the pickle but crashes on predict.
+pandas==2.3.3
+numpy==2.2.6
 
 # --- Machine learning ---
-scikit-learn
-xgboost
-joblib
+scikit-learn==1.7.2
+xgboost==3.2.0
+joblib==1.5.3
 
 # --- Persistence (read/write pr_predictions only; NO migrations) ---
 # Schema is owned centrally by backend/database (Flyway). Do NOT add a
