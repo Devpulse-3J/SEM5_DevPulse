@@ -24,7 +24,7 @@ public record PullRequestResponse(
         Instant mergedAt,
         List<ReviewResponse> reviews,
         List<CheckResponse> checks,
-        Object riskAnalysis) {
+        RiskAnalysisResponse riskAnalysis) {
 
     public record ReviewResponse(
             String id,
@@ -35,5 +35,24 @@ public record PullRequestResponse(
     }
 
     public record CheckResponse(String id, String name, String status, String url) {
+    }
+
+    /**
+     * The latest stored prediction for a PR; null when it has not been scored.
+     * {@code riskScore} is a percentage (0 to 100) and {@code riskLevel} is LOW,
+     * MEDIUM or HIGH, the shape the frontend's PRRiskAnalysis already expects.
+     * {@code factors} is empty: the model does not explain individual scores.
+     */
+    public record RiskAnalysisResponse(
+            double riskScore,
+            String riskLevel,
+            String summary,
+            List<RiskFactorResponse> factors,
+            String algorithm,
+            String modelVersion,
+            Instant predictedAt) {
+    }
+
+    public record RiskFactorResponse(String category, String description, double impactScore) {
     }
 }

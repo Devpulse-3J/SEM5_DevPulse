@@ -81,6 +81,40 @@ public class ActivityQueryRepository {
                         instant(rs, "reviewed_at")));
     }
 
+    /**
+     * The most recent prediction for each of the given PRs. A PR can be scored
+     * more than once (a new model version, a manual re-score), and only the
+     * latest is meaningful. pr_predictions is owned by analytics-service; this
+     * only reads it.
+     */
+    public List<PredictionRow> findLatestPredictions(Integer companyId, List<Integer> prIds) {
+        if (prIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query("""
+                SELECT ranked.pr_id, ranked.risk_score, ranked.risk_category,
+                       ranked.algorithm, ranked.model_version, ranked.predicted_at
+                FROM (
+                    SELECT p.pr_id, p.risk_score, p.risk_category, p.algorithm,
+                           p.model_version, p.predicted_at,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY p.pr_id
+                               ORDER BY p.predicted_at DESC NULLS LAST, p.prediction_id DESC
+                           ) AS rn
+                    FROM pr_predictions p
+                    WHERE p.company_id = :companyId AND p.pr_id IN (:prIds)
+                ) ranked
+                WHERE ranked.rn = 1
+                """, Map.of("companyId", companyId, "prIds", prIds),
+                (rs, rowNum) -> new PredictionRow(
+                        rs.getInt("pr_id"),
+                        rs.getBigDecimal("risk_score").doubleValue(),
+                        rs.getString("risk_category"),
+                        rs.getString("algorithm"),
+                        rs.getString("model_version"),
+                        instant(rs, "predicted_at")));
+    }
+
     public List<CheckRow> findChecks(List<Integer> prIds) {
         if (prIds.isEmpty()) {
             return List.of();
@@ -191,6 +225,12 @@ public class ActivityQueryRepository {
             Integer repositoryId, String repositoryName, boolean draft, String state,
             String headBranch, String baseBranch, int additions, int deletions,
             int changedFiles, String url, Instant createdAt, Instant updatedAt, Instant mergedAt) {
+    }
+
+    /** risk_score is the model's probability, 0 to 1. risk_category is low, medium or high. */
+    public record PredictionRow(
+            Integer prId, double riskScore, String riskCategory, String algorithm,
+            String modelVersion, Instant predictedAt) {
     }
 
     public record ReviewRow(

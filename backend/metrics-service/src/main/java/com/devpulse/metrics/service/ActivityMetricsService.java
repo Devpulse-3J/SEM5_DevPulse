@@ -4,10 +4,12 @@ import com.devpulse.metrics.dto.DeploymentResponse;
 import com.devpulse.metrics.dto.PullRequestResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.CheckResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.ReviewResponse;
+import com.devpulse.metrics.dto.PullRequestResponse.RiskAnalysisResponse;
 import com.devpulse.metrics.dto.WorkloadEntryResponse;
 import com.devpulse.metrics.exception.ApiException;
 import com.devpulse.metrics.repository.ActivityQueryRepository;
 import com.devpulse.metrics.repository.ActivityQueryRepository.CheckRow;
+import com.devpulse.metrics.repository.ActivityQueryRepository.PredictionRow;
 import com.devpulse.metrics.repository.ActivityQueryRepository.PullRequestCycleFact;
 import com.devpulse.metrics.repository.ActivityQueryRepository.ReviewRow;
 import com.devpulse.metrics.security.ProjectAccessService;
@@ -59,6 +61,9 @@ public class ActivityMetricsService {
                 .collect(Collectors.groupingBy(ReviewRow::prId));
         Map<Integer, List<CheckRow>> checks = queryRepository.findChecks(ids).stream()
                 .collect(Collectors.groupingBy(CheckRow::prId));
+        Map<Integer, PredictionRow> predictions = queryRepository
+                .findLatestPredictions(context.companyId(), ids).stream()
+                .collect(Collectors.toMap(PredictionRow::prId, prediction -> prediction, (a, b) -> a));
         return rows.stream().map(row -> new PullRequestResponse(
                 row.id().toString(),
                 row.number(),
@@ -90,7 +95,22 @@ public class ActivityMetricsService {
                         .map(check -> new CheckResponse(
                                 check.id().toString(), check.name(), check.status(), check.url()))
                         .toList(),
-                null)).toList();
+                toRiskAnalysis(predictions.get(row.id())))).toList();
+    }
+
+    /** The prediction as the frontend shows it, or null for a PR that has not been scored. */
+    static RiskAnalysisResponse toRiskAnalysis(PredictionRow prediction) {
+        if (prediction == null) {
+            return null;
+        }
+        double percent = Math.round(prediction.riskScore() * 1000.0) / 10.0;
+        String level = prediction.riskCategory() == null
+                ? "MEDIUM" : prediction.riskCategory().toUpperCase();
+        String summary = String.format(
+                "The model estimates a %.0f%% chance this pull request goes stale (%s v%s).",
+                percent, prediction.algorithm(), prediction.modelVersion());
+        return new RiskAnalysisResponse(percent, level, summary, List.of(),
+                prediction.algorithm(), prediction.modelVersion(), prediction.predictedAt());
     }
 
     @Transactional(readOnly = true)
