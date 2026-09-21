@@ -19,7 +19,7 @@ import pika
 
 from app.config import get_settings
 from app.database.session import get_session_factory
-from app.ml.feature_extractor import PullRequestNotFound
+from app.ml.feature_extractor import PullRequestNotFound, load_pull_request_by_github_id
 from app.services.scoring import score_pull_request
 
 log = logging.getLogger(__name__)
@@ -29,29 +29,47 @@ QUEUE = "analytics.pr_events"
 ROUTING_KEYS = ["pr.opened"]
 ALERT_ROUTING_KEY = "alert.pr_high_risk"
 
+# metrics-service writes the PR row from this same event, so it may not be
+# there on the first look.
+LOOKUP_ATTEMPTS = 4
+LOOKUP_DELAY_SECONDS = 2
+
+
+def _resolve_pr_id(channel, session, github_pr_id: int, company_id: int) -> int | None:
+    """Map the event's GitHub PR id to pull_requests.pr_id, waiting briefly."""
+    for attempt in range(LOOKUP_ATTEMPTS):
+        try:
+            return load_pull_request_by_github_id(session, github_pr_id, company_id).pr_id
+        except PullRequestNotFound:
+            session.rollback()  # end the transaction so the next look sees new rows
+            if attempt < LOOKUP_ATTEMPTS - 1:
+                # connection.sleep keeps RabbitMQ heartbeats flowing while we wait.
+                channel.connection.sleep(LOOKUP_DELAY_SECONDS)
+    return None
+
 
 def _handle_pr_opened(channel, payload: dict) -> None:
     settings = get_settings()
-    pr_id = payload.get("prId")
+    # `prId` on the event is GitHub's PR id, not pull_requests.pr_id.
+    github_pr_id = payload.get("prId")
     company_id = payload.get("companyId")
-    if pr_id is None:
-        log.warning("pr.opened without prId, dropping: %s", payload.get("eventId"))
+    if github_pr_id is None or company_id is None:
+        log.warning("pr.opened without prId/companyId, dropping: %s", payload.get("eventId"))
         return
 
     session = get_session_factory()()
     try:
-        result = score_pull_request(session, int(pr_id), company_id)
-    except PullRequestNotFound:
-        # metrics-service may not have persisted the PR yet. Requeueing would
-        # spin; the PR is scored on the next event or by an explicit call.
-        log.warning("pr.opened for unknown pr_id=%s, skipping", pr_id)
-        return
+        pr_id = _resolve_pr_id(channel, session, int(github_pr_id), int(company_id))
+        if pr_id is None:
+            log.warning("pr.opened for unknown github pr id=%s, skipping", github_pr_id)
+            return
+        result = score_pull_request(session, pr_id, int(company_id))
     finally:
         session.close()
 
     log.info(
-        "Scored pr_id=%s risk=%.4f (%s)",
-        pr_id, result["risk_score"], result["risk_category"],
+        "Scored pr_id=%s (github id %s) risk=%.4f (%s)",
+        pr_id, github_pr_id, result["risk_score"], result["risk_category"],
     )
 
     if result["risk_score"] >= settings.risk_threshold:

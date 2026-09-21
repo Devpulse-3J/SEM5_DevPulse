@@ -118,6 +118,28 @@ def load_pull_request(
     return pr
 
 
+def load_pull_request_by_github_id(
+    db: Session, github_pr_id: int, company_id: int
+) -> PullRequest:
+    """Find a PR by the id GitHub assigned, which is what pr.* events carry.
+
+    Events publish GitHub's PR id in `prId`, not `pull_requests.pr_id`.
+    """
+    stmt = (
+        select(PullRequest)
+        .where(
+            PullRequest.github_pr_id == github_pr_id,
+            PullRequest.company_id == company_id,
+        )
+        .order_by(PullRequest.pr_id.desc())
+        .limit(1)
+    )
+    pr = db.execute(stmt).scalar_one_or_none()
+    if pr is None:
+        raise PullRequestNotFound(f"pull request with github id {github_pr_id} not found")
+    return pr
+
+
 def _fetch_resolutions(
     db: Session,
     *,
