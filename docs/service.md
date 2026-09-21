@@ -164,3 +164,8 @@ service — you touch nothing that already works.
 system, projects would likely be their own service. For a three-person semester project, keeping
 them together is the right call — just be aware it is the piece most likely to feel crowded, and
 the one most likely to need splitting if scope grows.
+
+<!-- Webhook pipeline check: this comment is a harmless docs-only change used to confirm that
+GitHub events (pull request, push, deployment) reach integration-service and metrics-service.
+It can be removed at any time. -->
+
