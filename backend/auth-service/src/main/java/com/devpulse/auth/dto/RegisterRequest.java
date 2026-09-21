@@ -26,6 +26,9 @@ public class RegisterRequest {
 
     private Boolean isCompany;
 
+    /** One-time token from a project invitation email; joins the inviting company and project. */
+    private String inviteToken;
+
     // -- constructors --------------------------------------------------------
 
     public RegisterRequest() {
@@ -86,6 +89,14 @@ public class RegisterRequest {
 
     public void setCompanyName(String companyName) {
         this.companyName = companyName;
+    }
+
+    public String getInviteToken() {
+        return inviteToken;
+    }
+
+    public void setInviteToken(String inviteToken) {
+        this.inviteToken = inviteToken;
     }
 
     public Boolean getIsCompany() {

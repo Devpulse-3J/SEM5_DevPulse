@@ -13,4 +13,9 @@ public interface ProjectInvitationRepository extends JpaRepository<ProjectInvita
     List<ProjectInvitation> findByProjectIdAndStatus(Integer projectId, String status);
 
     Optional<ProjectInvitation> findByProjectIdAndUserUserId(Integer projectId, Integer userId);
+
+    Optional<ProjectInvitation> findByToken(String token);
+
+    Optional<ProjectInvitation> findByProjectIdAndEmailIgnoreCaseAndStatus(
+            Integer projectId, String email, String status);
 }

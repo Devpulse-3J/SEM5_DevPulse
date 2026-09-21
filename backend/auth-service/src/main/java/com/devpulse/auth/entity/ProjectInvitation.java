@@ -5,13 +5,18 @@ import java.time.OffsetDateTime;
 
 /**
  * JPA Entity representing a project-level membership invitation
- * created by a Project Manager.
+ * created by a company admin.
  *
- * <p>An invitation always names a {@link User} that already exists: an admin may
- * only invite someone who has registered. Inviting an unknown address is a 404
- * from {@code POST /projects/{id}/invite}, never a new {@code users} row —
- * pre-creating a placeholder account there collided with the UNIQUE constraint
- * on {@code users.email} whenever the address turned out to already exist.
+ * <p>An invitation identifies its invitee one of two ways. Someone who already
+ * has an account is added to the project immediately and never gets a row here.
+ * An address with no account behind it gets a pending row keyed by
+ * {@code email} with a one-time {@code token} and an expiry; {@code user}
+ * stays null until the invitee registers or accepts, at which point the row is
+ * turned into a {@code project_members} row and marked accepted.
+ *
+ * <p>The email, token, expiry and company columns come from
+ * {@code V9__email_based_project_invitations.sql}; {@code user_id} is nullable
+ * since that migration.
  */
 @Entity
 @Table(name = "project_invitations")
@@ -26,8 +31,20 @@ public class ProjectInvitation {
     private Integer projectId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id")
     private User user;
+
+    @Column(name = "email", length = 320)
+    private String email;
+
+    @Column(name = "token", length = 255)
+    private String token;
+
+    @Column(name = "expires_at")
+    private OffsetDateTime expiresAt;
+
+    @Column(name = "company_id")
+    private Integer companyId;
 
     @Column(name = "role", nullable = false, length = 50)
     private String role = "developer";
@@ -61,6 +78,18 @@ public class ProjectInvitation {
 
     public User getUser() { return user; }
     public void setUser(User user) { this.user = user; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+
+    public String getToken() { return token; }
+    public void setToken(String token) { this.token = token; }
+
+    public OffsetDateTime getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(OffsetDateTime expiresAt) { this.expiresAt = expiresAt; }
+
+    public Integer getCompanyId() { return companyId; }
+    public void setCompanyId(Integer companyId) { this.companyId = companyId; }
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
