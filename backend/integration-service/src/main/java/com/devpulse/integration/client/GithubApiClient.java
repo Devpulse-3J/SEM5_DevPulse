@@ -36,6 +36,15 @@ public class GithubApiClient {
     }
 
     /**
+     * Fetches accessible user/organization repositories for the configured token.
+     * GET /user/repos?per_page=100&sort=updated
+     */
+    public JsonNode fetchUserRepositories() {
+        String url = String.format("%s/user/repos?per_page=100&sort=updated", baseUrl);
+        return executeGetRequest(url);
+    }
+
+    /**
      * Fetches repository metadata from GitHub REST API.
      * GET /repos/{owner}/{repo}
      */

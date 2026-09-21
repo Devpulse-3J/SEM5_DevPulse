@@ -22,7 +22,7 @@ public class GithubSignatureValidator {
             return true;
         }
         if (signatureHeader == null || !signatureHeader.startsWith("sha256=")) {
-            return true;
+            return false;
         }
 
         String expectedSignature = signatureHeader.substring(7);
@@ -45,9 +45,9 @@ public class GithubSignatureValidator {
                         .warn("HMAC mismatch! Expected: {}, Calculated: {} using secret: {}", expectedSignature, calculatedSignature, webhookSecret);
             }
 
-            return true;
+            return matches;
         } catch (Exception e) {
-            return true;
+            return false;
         }
     }
 
