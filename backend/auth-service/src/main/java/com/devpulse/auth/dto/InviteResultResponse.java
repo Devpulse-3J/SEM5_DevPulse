@@ -3,10 +3,11 @@ package com.devpulse.auth.dto;
 /**
  * Result of {@code POST /projects/{id}/invite}.
  *
- * <p>There is one success shape, {@code ADDED_EXISTING_USER}: the email belonged
- * to an account in this company, so that person was added straight to the
- * project. An admin may only invite someone who has already registered, so an
- * address with no account behind it is a 404, not a second kind of success.
+ * <p>Two success shapes. {@code ADDED_EXISTING_USER}: the email belonged to an
+ * account in this company, so that person was added straight to the project.
+ * {@code INVITED_NEW_USER}: no account exists for the address, so a pending,
+ * expiring project invitation was recorded and emailed; the person joins the
+ * project when they register with, or accept using, the token in that email.
  *
  * <p>{@code CREATED_USER} was an earlier second path: the invite pre-created a
  * placeholder {@code users} row flagged {@code must_reset_password}, so that

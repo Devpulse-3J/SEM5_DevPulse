@@ -5,6 +5,7 @@ import com.devpulse.auth.dto.LoginRequest;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.dto.UserProfileResponse;
 import com.devpulse.auth.entity.Company;
+import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.SystemRole;
 import com.devpulse.auth.entity.User;
@@ -40,6 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final UserMapper userMapper;
+    private final ProjectInvitationClaimService invitationClaimService;
 
     public AuthServiceImpl(UserRepository userRepository,
                            CompanyRepository companyRepository,
@@ -47,7 +49,8 @@ public class AuthServiceImpl implements AuthService {
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
                            AuthenticationManager authenticationManager,
-                           UserMapper userMapper) {
+                           UserMapper userMapper,
+                           ProjectInvitationClaimService invitationClaimService) {
         this.userRepository = userRepository;
         this.companyRepository = companyRepository;
         this.projectMemberRepository = projectMemberRepository;
@@ -55,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
         this.userMapper = userMapper;
+        this.invitationClaimService = invitationClaimService;
     }
 
     @Override
@@ -67,9 +71,9 @@ public class AuthServiceImpl implements AuthService {
         // the invitee out of the account created for them, so registration CLAIMS it
         // instead: same user_id, so the memberships already attached survive.
         //
-        // Inviting an unregistered address is now a 404 — an invite may only name
-        // someone who already has an account — so nothing creates these rows any
-        // more. The claim path stays only until any pre-existing ones are gone.
+        // Nothing creates these rows any more: an invite for an unregistered address
+        // is now a pending project_invitations row, claimed with its token below.
+        // This path stays only until any pre-existing placeholders are gone.
         User invited = userRepository.findByEmail(request.getEmail())
                 .filter(User::isMustResetPassword)
                 .orElse(null);
@@ -79,6 +83,10 @@ public class AuthServiceImpl implements AuthService {
 
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateEmailException(request.getEmail());
+        }
+
+        if (request.getInviteToken() != null && !request.getInviteToken().isBlank()) {
+            return registerWithProjectInvitation(request);
         }
 
         Company company;
@@ -115,6 +123,35 @@ public class AuthServiceImpl implements AuthService {
         User savedUser = userRepository.save(user);
         String token = jwtService.generateToken(savedUser);
 
+        return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+    }
+
+    /**
+     * Registers someone who arrived through a project invitation email.
+     * <p>
+     * A bad, expired or mismatched token fails the registration outright rather
+     * than falling back to a plain signup: that would silently strand the invitee
+     * in an account with no company and no project, and the invite would look
+     * accepted. Company and role come from the invitation, never the request, so
+     * a token cannot be used to open a new company or escalate to admin.
+     */
+    private AuthResponse registerWithProjectInvitation(RegisterRequest request) {
+        ProjectInvitation invitation = invitationClaimService
+                .requirePendingInvitation(request.getInviteToken(), request.getEmail());
+        Company company = invitationClaimService.requireInvitedCompany(invitation);
+
+        User user = new User();
+        user.setEmail(request.getEmail());
+        user.setFullName(request.getFullName());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setCompany(company);
+        user.setSystemRoleEnum(SystemRole.MEMBER);
+        user.setCreatedAt(OffsetDateTime.now());
+
+        User savedUser = userRepository.save(user);
+        invitationClaimService.complete(invitation, savedUser);
+
+        String token = jwtService.generateToken(savedUser);
         return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
     }
 

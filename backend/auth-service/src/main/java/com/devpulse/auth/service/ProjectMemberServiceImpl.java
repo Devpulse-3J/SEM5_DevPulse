@@ -5,17 +5,19 @@ import com.devpulse.auth.dto.ChangeMemberRoleRequest;
 import com.devpulse.auth.dto.InviteByEmailRequest;
 import com.devpulse.auth.dto.InviteResultResponse;
 import com.devpulse.auth.dto.ProjectMemberResponse;
+import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.ProjectRole;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ConflictException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
-import com.devpulse.auth.entity.OrganizationInvitation;
-import com.devpulse.auth.repository.OrganizationInvitationRepository;
+import com.devpulse.auth.repository.ProjectInvitationRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.ProjectAccessService;
 import com.devpulse.auth.security.RequestContext;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -25,6 +27,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.slf4j.Logger;
@@ -40,18 +43,21 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final ProjectAccessService projectAccessService;
-    private final OrganizationInvitationRepository orgInviteRepository;
+    private final ProjectInvitationRepository projectInvitationRepository;
+    private final String frontendBaseUrl;
     private final JavaMailSender mailSender;
 
     public ProjectMemberServiceImpl(ProjectMemberRepository projectMemberRepository,
                                     UserRepository userRepository,
                                     ProjectAccessService projectAccessService,
-                                    OrganizationInvitationRepository orgInviteRepository,
+                                    ProjectInvitationRepository projectInvitationRepository,
+                                    @Value("${devpulse.frontend.base-url:http://localhost:3000}") String frontendBaseUrl,
                                     @Autowired(required = false) JavaMailSender mailSender) {
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
-        this.orgInviteRepository = orgInviteRepository;
+        this.projectInvitationRepository = projectInvitationRepository;
+        this.frontendBaseUrl = frontendBaseUrl.replaceAll("/+$", "");
         this.mailSender = mailSender;
     }
 
@@ -177,29 +183,42 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
                     "You have been added to " + companyName + " on DevPulse",
                     "Hello " + target.getFullName() + ",\n\n" +
                     "You have been added to the workspace \"" + companyName + "\" as a " + role.name() + "!\n\n" +
-                    "Log in to DevPulse to start collaborating:\nhttp://localhost:3000/login\n");
+                    "Log in to DevPulse to start collaborating:\n" + frontendBaseUrl + "/login\n");
 
             return InviteResultResponse.addedExisting(target.getUserId(), email, role.name());
         }
 
-        // Unregistered email -> create organization invitation row in DB
+        // Unregistered email -> a pending project invitation keyed by that address.
+        // Re-inviting the same address to the same project refreshes the pending row
+        // (new token, new expiry, possibly a new role) instead of tripping the
+        // unique index on (project_id, lower(email)) for pending invites.
         String token = UUID.randomUUID().toString();
         OffsetDateTime expiresAt = OffsetDateTime.now().plusDays(7);
-        OrganizationInvitation invitation = new OrganizationInvitation(
-                admin.getCompany(), email, role.name(), token, admin, expiresAt);
-        orgInviteRepository.save(invitation);
+        ProjectInvitation invitation = projectInvitationRepository
+                .findByProjectIdAndEmailIgnoreCaseAndStatus(projectId, email, "pending")
+                .orElseGet(ProjectInvitation::new);
+        invitation.setProjectId(projectId);
+        invitation.setCompanyId(context.companyId());
+        invitation.setEmail(email);
+        invitation.setRole(role.toDbValue());
+        invitation.setToken(token);
+        invitation.setExpiresAt(expiresAt);
+        invitation.setInvitedBy(admin);
+        invitation.setStatus("pending");
+        projectInvitationRepository.save(invitation);
 
-        log.info("Admin {} created OrganizationInvitation entity for unregistered address {} for project {}",
-                admin.getEmail(), email, projectId);
+        log.info("Admin {} created a pending project invitation for unregistered address {} on project {} as {}",
+                admin.getEmail(), email, projectId, role);
 
-        // Send invitation email to unregistered user
         String companyName = admin.getCompany() != null ? admin.getCompany().getCompanyName() : "DevPulse Workspace";
+        String registerLink = frontendBaseUrl + "/register?invite=" + token
+                + "&email=" + URLEncoder.encode(email, StandardCharsets.UTF_8);
         sendEmail(email,
                 "Invitation to join " + companyName + " on DevPulse",
                 "Hello,\n\n" +
                 "You have been invited to join the workspace \"" + companyName + "\" on DevPulse as a " + role.name() + "!\n\n" +
-                "Please click the link below to create your account and accept your workspace invitation:\n" +
-                "http://localhost:3000/accept-invite?token=" + token + "\n\n" +
+                "Create your account with this email address (" + email + ") using the link below:\n" +
+                registerLink + "\n\n" +
                 "(This invitation link will expire in 7 days).\n");
 
         return InviteResultResponse.invitedNew(email, role.name());

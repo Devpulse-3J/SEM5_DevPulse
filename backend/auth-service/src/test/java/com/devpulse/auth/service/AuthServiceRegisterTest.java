@@ -3,8 +3,10 @@ package com.devpulse.auth.service;
 import com.devpulse.auth.dto.AuthResponse;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.entity.Company;
+import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.DuplicateEmailException;
+import com.devpulse.auth.exception.ForbiddenException;
 import com.devpulse.auth.mapper.UserMapper;
 import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
@@ -12,6 +14,7 @@ import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -32,6 +35,7 @@ public class AuthServiceRegisterTest {
     private ProjectMemberRepository projectMemberRepository;
     private PasswordEncoder passwordEncoder;
     private JwtService jwtService;
+    private ProjectInvitationClaimService claimService;
     private AuthServiceImpl service;
 
     private Company invitingCompany;
@@ -43,10 +47,11 @@ public class AuthServiceRegisterTest {
         projectMemberRepository = mock(ProjectMemberRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwtService = mock(JwtService.class);
+        claimService = mock(ProjectInvitationClaimService.class);
         AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
 
         service = new AuthServiceImpl(userRepository, companyRepository, projectMemberRepository,
-                passwordEncoder, jwtService, authenticationManager, new UserMapper());
+                passwordEncoder, jwtService, authenticationManager, new UserMapper(), claimService);
 
         invitingCompany = new Company();
         invitingCompany.setCompanyId(7);
@@ -135,5 +140,107 @@ public class AuthServiceRegisterTest {
         // Second attempt now sees a non-placeholder row.
         when(userRepository.existsByEmail("invitee@example.com")).thenReturn(true);
         assertThrows(DuplicateEmailException.class, () -> service.register(registerRequest()));
+    }
+
+    // -- registering with a project invitation token --------------------------
+
+    private ProjectInvitation pendingInvitation() {
+        ProjectInvitation invitation = new ProjectInvitation();
+        invitation.setProjectId(3);
+        invitation.setCompanyId(7);
+        invitation.setEmail("invitee@example.com");
+        invitation.setRole("manager");
+        invitation.setToken("tok-123");
+        return invitation;
+    }
+
+    @Test
+    public void registeringWithAValidTokenJoinsTheInvitingCompanyAndProject() {
+        ProjectInvitation invitation = pendingInvitation();
+        when(claimService.requirePendingInvitation("tok-123", "invitee@example.com"))
+                .thenReturn(invitation);
+        when(claimService.requireInvitedCompany(invitation)).thenReturn(invitingCompany);
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User saved = inv.getArgument(0);
+            saved.setUserId(55);
+            return saved;
+        });
+
+        RegisterRequest request = registerRequest();
+        request.setInviteToken("tok-123");
+        AuthResponse response = service.register(request);
+
+        assertEquals("jwt-token", response.getAccessToken());
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertEquals(7, saved.getValue().getCompany().getCompanyId());
+        assertEquals("member", saved.getValue().getSystemRole());
+        assertEquals("$2a$10$encoded", saved.getValue().getPasswordHash());
+        // The membership and the used-up invitation are handled for the saved user.
+        verify(claimService).complete(invitation, saved.getValue());
+    }
+
+    @Test
+    public void aTokenCannotBeUsedToOpenANewCompanyOrBecomeAdmin() {
+        ProjectInvitation invitation = pendingInvitation();
+        when(claimService.requirePendingInvitation("tok-123", "invitee@example.com"))
+                .thenReturn(invitation);
+        when(claimService.requireInvitedCompany(invitation)).thenReturn(invitingCompany);
+
+        RegisterRequest request = registerRequest();
+        request.setInviteToken("tok-123");
+        request.setCompanyName("Breakaway Corp");
+        request.setIsCompany(true);
+        service.register(request);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertEquals(7, saved.getValue().getCompany().getCompanyId());
+        assertEquals("member", saved.getValue().getSystemRole());
+        verify(companyRepository, never()).save(any(Company.class));
+    }
+
+    @Test
+    public void aBadTokenFailsTheRegistrationInsteadOfCreatingAnOrphanAccount() {
+        when(claimService.requirePendingInvitation("bad", "invitee@example.com"))
+                .thenThrow(new IllegalArgumentException("This invitation has expired"));
+
+        RegisterRequest request = registerRequest();
+        request.setInviteToken("bad");
+
+        assertThrows(IllegalArgumentException.class, () -> service.register(request));
+        verify(userRepository, never()).save(any(User.class));
+        verify(claimService, never()).complete(any(), any());
+    }
+
+    @Test
+    public void aTokenForADifferentAddressFailsTheRegistration() {
+        when(claimService.requirePendingInvitation("tok-123", "invitee@example.com"))
+                .thenThrow(new ForbiddenException("sent to a different email address"));
+
+        RegisterRequest request = registerRequest();
+        request.setInviteToken("tok-123");
+
+        assertThrows(ForbiddenException.class, () -> service.register(request));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    public void aTokenDoesNotBypassTheDuplicateEmailCheck() {
+        when(userRepository.existsByEmail("invitee@example.com")).thenReturn(true);
+
+        RegisterRequest request = registerRequest();
+        request.setInviteToken("tok-123");
+
+        assertThrows(DuplicateEmailException.class, () -> service.register(request));
+        verify(claimService, never()).complete(any(), any());
+    }
+
+    @Test
+    public void registeringWithoutATokenStaysAnOrdinarySignup() {
+        service.register(registerRequest());
+
+        verify(claimService, never()).requirePendingInvitation(any(), any());
+        verify(claimService, never()).complete(any(), any());
     }
 }
