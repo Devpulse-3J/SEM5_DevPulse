@@ -73,7 +73,7 @@ public class EventReferenceRepository {
 
     public Optional<Integer> resolveDeploymentProject(
             Integer companyId, Integer eventProjectId, String commitSha) {
-        if (commitSha != null) {
+        if (commitSha != null && !commitSha.isBlank()) {
             List<Integer> fromCommit = jdbcTemplate.query("""
                     SELECT r.project_id
                     FROM commits c
@@ -84,19 +84,25 @@ public class EventReferenceRepository {
                 return Optional.of(fromCommit.get(0));
             }
         }
-        if (eventProjectId == null) {
-            return Optional.empty();
-        }
-        List<Integer> direct = jdbcTemplate.query("""
-                SELECT project_id FROM projects WHERE company_id = ? AND project_id = ?
-                """, (rs, rowNum) -> rs.getInt("project_id"), companyId, eventProjectId);
-        if (!direct.isEmpty()) {
-            return Optional.of(direct.get(0));
+        if (eventProjectId != null) {
+            List<Integer> direct = jdbcTemplate.query("""
+                    SELECT project_id FROM projects WHERE company_id = ? AND project_id = ?
+                    """, (rs, rowNum) -> rs.getInt("project_id"), companyId, eventProjectId);
+            if (!direct.isEmpty()) {
+                return Optional.of(direct.get(0));
+            }
+            List<Integer> fromRepo = jdbcTemplate.query("""
+                    SELECT project_id FROM repos
+                    WHERE company_id = ? AND (github_repo_id = ? OR repo_id = ?) AND project_id IS NOT NULL
+                    """, (rs, rowNum) -> rs.getInt("project_id"), companyId, eventProjectId.longValue(), eventProjectId);
+            if (!fromRepo.isEmpty()) {
+                return Optional.of(fromRepo.get(0));
+            }
         }
         return jdbcTemplate.query("""
                 SELECT project_id FROM repos
-                WHERE company_id = ? AND github_repo_id = ? AND project_id IS NOT NULL
-                """, (rs, rowNum) -> rs.getInt("project_id"), companyId, eventProjectId.longValue())
+                WHERE company_id = ? AND project_id IS NOT NULL
+                """, (rs, rowNum) -> rs.getInt("project_id"), companyId)
                 .stream().findFirst();
     }
 

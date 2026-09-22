@@ -237,10 +237,9 @@ public class MetricEventIngestionService {
         String value = blankToDefault(environment, "production").toLowerCase(Locale.ROOT);
         return switch (value) {
             case "prod", "production" -> "production";
-            case "stage", "staging" -> "staging";
-            case "dev", "development" -> "development";
-            default -> throw new InvalidMetricEventException(
-                    "Unsupported deployment environment: " + environment);
+            case "stage", "staging", "preview", "qa", "test" -> "staging";
+            case "dev", "development", "local" -> "development";
+            default -> "production";
         };
     }
 
