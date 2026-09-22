@@ -16,6 +16,7 @@ public class PrOpenedEvent extends BaseEvent {
     private String authorAssociation;
     /** The PR description ("body" in GitHub's payload). Null when omitted. */
     private String body;
+    private String authorEmail;
 
     public PrOpenedEvent() {
         super();
@@ -83,4 +84,7 @@ public class PrOpenedEvent extends BaseEvent {
 
     public String getBody() { return body; }
     public void setBody(String body) { this.body = body; }
+
+    public String getAuthorEmail() { return authorEmail; }
+    public void setAuthorEmail(String authorEmail) { this.authorEmail = authorEmail; }
 }

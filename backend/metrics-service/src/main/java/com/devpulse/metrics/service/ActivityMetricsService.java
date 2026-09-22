@@ -53,9 +53,13 @@ public class ActivityMetricsService {
 
     @Transactional(readOnly = true)
     public List<PullRequestResponse> getPullRequests(
-            RequestContext context, Integer projectId, int limit, int offset) {
-        accessService.requireViewAccess(context, projectId);
-        var rows = queryRepository.findPullRequests(context.companyId(), projectId, limit, offset);
+            RequestContext context, Integer projectId, Integer authorId, int limit, int offset) {
+        if (projectId != null) {
+            accessService.requireViewAccess(context, projectId);
+        } else {
+            accessService.requireCompanyAccess(context);
+        }
+        var rows = queryRepository.findPullRequests(context.companyId(), projectId, authorId, limit, offset);
         List<Integer> ids = rows.stream().map(row -> row.id()).toList();
         Map<Integer, List<ReviewRow>> reviews = queryRepository.findReviews(ids).stream()
                 .collect(Collectors.groupingBy(ReviewRow::prId));

@@ -74,6 +74,11 @@ public class WebhookEventNormalizer {
                         prNode.path("author_association").asText(null)
                 );
                 openedEvent.setBody(prNode.path("body").asText(null));
+                String authorEmail = prNode.path("user").path("email").asText(null);
+                if (authorEmail == null || authorEmail.isBlank()) {
+                    authorEmail = root.path("sender").path("email").asText(null);
+                }
+                openedEvent.setAuthorEmail(authorEmail);
                 return openedEvent;
             } else if ("closed".equalsIgnoreCase(action)) {
                 boolean isMerged = prNode.path("merged").asBoolean(false);
@@ -90,11 +95,20 @@ public class WebhookEventNormalizer {
             String message = headCommit.path("message").asText("Pushed commit");
             Integer authorId = root.path("sender").path("id").asInt(1);
 
-            return new CommitPushedEvent(
+            CommitPushedEvent commitEvent = new CommitPushedEvent(
                     eventId, companyId, projectId, now,
                     commitSha, repoId, null, authorId,
                     message, now, 0, 0
             );
+            String authorEmail = headCommit.path("author").path("email").asText(null);
+            if (authorEmail == null || authorEmail.isBlank()) {
+                authorEmail = headCommit.path("committer").path("email").asText(null);
+            }
+            if (authorEmail == null || authorEmail.isBlank()) {
+                authorEmail = root.path("pusher").path("email").asText(null);
+            }
+            commitEvent.setAuthorEmail(authorEmail);
+            return commitEvent;
         } else if ("deployment".equalsIgnoreCase(eventType) || "deployment_status".equalsIgnoreCase(eventType)) {
             JsonNode depNode = root.path("deployment");
             Integer deploymentId = depNode.path("id").asInt(1);

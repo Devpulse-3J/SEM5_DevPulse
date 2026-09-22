@@ -11,6 +11,7 @@ public class CommitPushedEvent extends BaseEvent {
     private Instant commitTime;
     private int linesAdded;
     private int linesDeleted;
+    private String authorEmail;
 
     public CommitPushedEvent() {
         super();
@@ -53,4 +54,7 @@ public class CommitPushedEvent extends BaseEvent {
 
     public int getLinesDeleted() { return linesDeleted; }
     public void setLinesDeleted(int linesDeleted) { this.linesDeleted = linesDeleted; }
+
+    public String getAuthorEmail() { return authorEmail; }
+    public void setAuthorEmail(String authorEmail) { this.authorEmail = authorEmail; }
 }

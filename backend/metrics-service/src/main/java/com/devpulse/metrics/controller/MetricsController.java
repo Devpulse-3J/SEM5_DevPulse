@@ -50,11 +50,15 @@ public class MetricsController {
     @GetMapping("/prs")
     public List<PullRequestResponse> pullRequests(
             HttpServletRequest request,
-            @RequestParam @Positive Integer projectId,
+            @RequestParam(required = false) @Positive Integer projectId,
+            @RequestParam(required = false) Boolean myPrs,
+            @RequestParam(required = false) @Positive Integer authorId,
             @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit,
             @RequestParam(defaultValue = "0") @Min(0) int offset) {
+        RequestContext context = contextResolver.resolve(request);
+        Integer targetAuthorId = Boolean.TRUE.equals(myPrs) ? context.userId() : authorId;
         return activityMetricsService.getPullRequests(
-                contextResolver.resolve(request), projectId, limit, offset);
+                context, projectId, targetAuthorId, limit, offset);
     }
 
     @GetMapping("/deployments")
