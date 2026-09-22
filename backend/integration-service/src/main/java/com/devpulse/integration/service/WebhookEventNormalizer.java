@@ -111,13 +111,40 @@ public class WebhookEventNormalizer {
             return commitEvent;
         } else if ("deployment".equalsIgnoreCase(eventType) || "deployment_status".equalsIgnoreCase(eventType)) {
             JsonNode depNode = root.path("deployment");
-            Integer deploymentId = depNode.path("id").asInt(1);
-            String sha = depNode.path("sha").asText("abc1234");
-            String env = depNode.path("environment").asText("production");
-            String status = root.path("deployment_status").path("state").asText("success");
+            if (depNode.isMissingNode() || depNode.isNull()) {
+                depNode = root.path("deployment_status").path("deployment");
+            }
+            Long externalDeploymentId = depNode.path("id").asLong(1L);
+            int deploymentId = (int) (Math.abs(externalDeploymentId) % Integer.MAX_VALUE);
+            if (deploymentId <= 0) {
+                deploymentId = 1;
+            }
+
+            String sha = depNode.path("sha").asText("");
+            if (sha.isBlank()) {
+                sha = root.path("deployment_status").path("deployment").path("sha").asText("");
+            }
+            if (sha.isBlank()) {
+                sha = root.path("sha").asText("abc1234");
+            }
+
+            String env = depNode.path("environment").asText("");
+            if (env.isBlank()) {
+                env = root.path("deployment_status").path("environment").asText("production");
+            }
+
+            String status;
+            if ("deployment_status".equalsIgnoreCase(eventType)) {
+                status = root.path("deployment_status").path("state").asText("success");
+            } else {
+                status = "pending";
+            }
+
+            Long githubRepoId = root.path("repository").path("id").asLong(1L);
+            int targetRepoId = (int) (Math.abs(githubRepoId) % Integer.MAX_VALUE);
 
             return new DeploymentCreatedEvent(
-                    eventId, companyId, projectId, now,
+                    eventId, companyId, targetRepoId, now,
                     deploymentId, sha, env, status, now
             );
         }
