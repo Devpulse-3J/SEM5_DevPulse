@@ -68,38 +68,62 @@ public class ActivityMetricsService {
         Map<Integer, PredictionRow> predictions = queryRepository
                 .findLatestPredictions(context.companyId(), ids).stream()
                 .collect(Collectors.toMap(PredictionRow::prId, prediction -> prediction, (a, b) -> a));
-        return rows.stream().map(row -> new PullRequestResponse(
-                row.id().toString(),
-                row.number(),
-                row.title(),
-                row.description(),
-                row.authorName() == null ? "Unknown" : row.authorName(),
-                row.authorAvatar(),
-                row.repositoryId().toString(),
-                row.repositoryName(),
-                row.draft() ? "draft" : row.state(),
-                row.headBranch(),
-                row.baseBranch(),
-                row.additions(),
-                row.deletions(),
-                row.changedFiles(),
-                row.url(),
-                row.createdAt(),
-                row.updatedAt(),
-                row.mergedAt(),
-                reviews.getOrDefault(row.id(), List.of()).stream()
-                        .map(review -> new ReviewResponse(
-                                review.id().toString(),
-                                review.reviewerName() == null ? "Unknown" : review.reviewerName(),
-                                review.reviewerAvatar(),
-                                review.state(),
-                                review.submittedAt()))
-                        .toList(),
-                checks.getOrDefault(row.id(), List.of()).stream()
-                        .map(check -> new CheckResponse(
-                                check.id().toString(), check.name(), check.status(), check.url()))
-                        .toList(),
-                toRiskAnalysis(predictions.get(row.id())))).toList();
+        return rows.stream().map(row -> {
+            List<ReviewRow> prReviews = reviews.getOrDefault(row.id(), List.of());
+            java.time.Instant firstReviewTime = row.firstReviewAt();
+            if (firstReviewTime == null && !prReviews.isEmpty()) {
+                firstReviewTime = prReviews.stream()
+                        .map(ReviewRow::submittedAt)
+                        .filter(t -> t != null)
+                        .min(java.time.Instant::compareTo)
+                        .orElse(null);
+            }
+            BigDecimal ttfrHours = durationHours(row.createdAt(), firstReviewTime);
+            int reviewIterations = prReviews.size();
+            java.time.Instant resolutionTime = row.mergedAt();
+            if (resolutionTime == null && ("closed".equalsIgnoreCase(row.state()) || "merged".equalsIgnoreCase(row.state()))) {
+                resolutionTime = row.updatedAt();
+            }
+            BigDecimal turnaroundHours = (firstReviewTime != null && resolutionTime != null)
+                    ? durationHours(firstReviewTime, resolutionTime)
+                    : null;
+
+            return new PullRequestResponse(
+                    row.id().toString(),
+                    row.number(),
+                    row.title(),
+                    row.description(),
+                    row.authorName() == null ? "Unknown" : row.authorName(),
+                    row.authorAvatar(),
+                    row.repositoryId().toString(),
+                    row.repositoryName(),
+                    row.draft() ? "draft" : row.state(),
+                    row.headBranch(),
+                    row.baseBranch(),
+                    row.additions(),
+                    row.deletions(),
+                    row.changedFiles(),
+                    row.url(),
+                    row.createdAt(),
+                    row.updatedAt(),
+                    row.mergedAt(),
+                    prReviews.stream()
+                            .map(review -> new ReviewResponse(
+                                    review.id().toString(),
+                                    review.reviewerName() == null ? "Unknown" : review.reviewerName(),
+                                    review.reviewerAvatar(),
+                                    review.state(),
+                                    review.submittedAt()))
+                            .toList(),
+                    checks.getOrDefault(row.id(), List.of()).stream()
+                            .map(check -> new CheckResponse(
+                                    check.id().toString(), check.name(), check.status(), check.url()))
+                            .toList(),
+                    toRiskAnalysis(predictions.get(row.id())),
+                    ttfrHours,
+                    reviewIterations,
+                    turnaroundHours);
+        }).toList();
     }
 
     /** The prediction as the frontend shows it, or null for a PR that has not been scored. */

@@ -24,7 +24,37 @@ public record PullRequestResponse(
         Instant mergedAt,
         List<ReviewResponse> reviews,
         List<CheckResponse> checks,
-        RiskAnalysisResponse riskAnalysis) {
+        RiskAnalysisResponse riskAnalysis,
+        java.math.BigDecimal timeToFirstReviewHours,
+        int reviewIterations,
+        java.math.BigDecimal reviewTurnaroundHours) {
+
+    public PullRequestResponse(
+            String id,
+            int number,
+            String title,
+            String description,
+            String author,
+            String authorAvatar,
+            String repositoryId,
+            String repositoryName,
+            String status,
+            String headBranch,
+            String baseBranch,
+            int additions,
+            int deletions,
+            int changedFiles,
+            String url,
+            Instant createdAt,
+            Instant updatedAt,
+            Instant mergedAt,
+            List<ReviewResponse> reviews,
+            List<CheckResponse> checks,
+            RiskAnalysisResponse riskAnalysis) {
+        this(id, number, title, description, author, authorAvatar, repositoryId, repositoryName,
+                status, headBranch, baseBranch, additions, deletions, changedFiles, url,
+                createdAt, updatedAt, mergedAt, reviews, checks, riskAnalysis, null, 0, null);
+    }
 
     public record ReviewResponse(
             String id,
