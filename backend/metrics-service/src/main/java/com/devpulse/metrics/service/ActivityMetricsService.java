@@ -5,6 +5,8 @@ import com.devpulse.metrics.dto.PullRequestResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.CheckResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.ReviewResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.RiskAnalysisResponse;
+import com.devpulse.metrics.dto.ReviewVelocitySummaryResponse;
+import com.devpulse.metrics.dto.ReviewVelocitySummaryResponse.PrVelocityDetail;
 import com.devpulse.metrics.dto.WorkloadEntryResponse;
 import com.devpulse.metrics.exception.ApiException;
 import com.devpulse.metrics.repository.ActivityQueryRepository;
@@ -12,6 +14,7 @@ import com.devpulse.metrics.repository.ActivityQueryRepository.CheckRow;
 import com.devpulse.metrics.repository.ActivityQueryRepository.PredictionRow;
 import com.devpulse.metrics.repository.ActivityQueryRepository.PullRequestCycleFact;
 import com.devpulse.metrics.repository.ActivityQueryRepository.ReviewRow;
+import com.devpulse.metrics.repository.ActivityQueryRepository.ReviewVelocityFact;
 import com.devpulse.metrics.security.ProjectAccessService;
 import com.devpulse.metrics.security.RequestContext;
 import java.math.BigDecimal;
@@ -192,6 +195,101 @@ public class ActivityMetricsService {
             return new WorkloadEntryResponse(
                     member.userId().toString(), member.name(), activePrs, loadPct, cycleTime);
         }).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ReviewVelocitySummaryResponse getReviewVelocity(
+            RequestContext context, Integer projectId, int windowDays) {
+        accessService.requireViewAccess(context, projectId);
+        java.time.Instant now = clock.instant();
+        java.time.Instant windowStart = now.minus(windowDays, ChronoUnit.DAYS);
+        List<ReviewVelocityFact> facts = queryRepository.findReviewVelocityFacts(
+                context.companyId(), projectId, windowStart);
+
+        long totalPrs = facts.size();
+        java.util.List<PrVelocityDetail> details = new java.util.ArrayList<>();
+        java.util.List<BigDecimal> ttfrList = new java.util.ArrayList<>();
+        java.util.List<BigDecimal> turnaroundList = new java.util.ArrayList<>();
+        int totalIterations = 0;
+
+        for (ReviewVelocityFact fact : facts) {
+            java.time.Instant firstReview = fact.firstReviewAt() != null ? fact.firstReviewAt() : fact.minReviewedAt();
+            BigDecimal ttfr = durationHours(fact.createdAt(), firstReview);
+            if (ttfr != null) {
+                ttfrList.add(ttfr);
+            }
+
+            java.time.Instant resolution = fact.mergedAt() != null ? fact.mergedAt() : fact.closedAt();
+            BigDecimal turnaround = (firstReview != null && resolution != null)
+                    ? durationHours(firstReview, resolution)
+                    : null;
+            if (turnaround != null) {
+                turnaroundList.add(turnaround);
+            }
+
+            totalIterations += fact.reviewCount();
+
+            details.add(new PrVelocityDetail(
+                    fact.prId(),
+                    fact.prNumber(),
+                    fact.title(),
+                    fact.state(),
+                    fact.createdAt(),
+                    firstReview,
+                    fact.reviewCount(),
+                    ttfr,
+                    turnaround));
+        }
+
+        long reviewedPrs = ttfrList.size();
+        BigDecimal reviewCoveragePct = totalPrs == 0
+                ? BigDecimal.ZERO
+                : BigDecimal.valueOf(reviewedPrs)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(BigDecimal.valueOf(totalPrs), 2, RoundingMode.HALF_UP);
+
+        BigDecimal avgTtfr = average(ttfrList);
+        BigDecimal medianTtfr = median(ttfrList);
+        BigDecimal avgIterations = totalPrs == 0
+                ? BigDecimal.ZERO
+                : BigDecimal.valueOf(totalIterations)
+                        .divide(BigDecimal.valueOf(totalPrs), 2, RoundingMode.HALF_UP);
+        BigDecimal avgTurnaround = average(turnaroundList);
+
+        return new ReviewVelocitySummaryResponse(
+                projectId.toString(),
+                windowDays,
+                now,
+                totalPrs,
+                reviewedPrs,
+                reviewCoveragePct,
+                avgTtfr,
+                medianTtfr,
+                avgIterations,
+                avgTurnaround,
+                details);
+    }
+
+    private BigDecimal average(java.util.List<BigDecimal> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        BigDecimal sum = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(values.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal median(java.util.List<BigDecimal> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        java.util.List<BigDecimal> sorted = new java.util.ArrayList<>(values);
+        java.util.Collections.sort(sorted);
+        int size = sorted.size();
+        if (size % 2 == 1) {
+            return sorted.get(size / 2);
+        }
+        return sorted.get((size / 2) - 1).add(sorted.get(size / 2))
+                .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal durationHours(java.time.Instant start, java.time.Instant end) {

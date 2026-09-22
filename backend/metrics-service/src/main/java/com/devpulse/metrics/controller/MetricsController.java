@@ -3,6 +3,7 @@ package com.devpulse.metrics.controller;
 import com.devpulse.metrics.dto.DeploymentResponse;
 import com.devpulse.metrics.dto.DoraSummaryResponse;
 import com.devpulse.metrics.dto.PullRequestResponse;
+import com.devpulse.metrics.dto.ReviewVelocitySummaryResponse;
 import com.devpulse.metrics.dto.WorkloadEntryResponse;
 import com.devpulse.metrics.security.RequestContext;
 import com.devpulse.metrics.security.RequestContextResolver;
@@ -79,6 +80,15 @@ public class MetricsController {
             @RequestParam @Positive Integer projectId,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int windowDays) {
         return activityMetricsService.getWorkload(
+                contextResolver.resolve(request), projectId, windowDays);
+    }
+
+    @GetMapping("/review-velocity")
+    public ReviewVelocitySummaryResponse reviewVelocity(
+            HttpServletRequest request,
+            @RequestParam @Positive Integer projectId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int windowDays) {
+        return activityMetricsService.getReviewVelocity(
                 contextResolver.resolve(request), projectId, windowDays);
     }
 }
