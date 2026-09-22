@@ -29,9 +29,9 @@ public class JiraSignatureValidator {
             return false;
         }
 
-        // If secret is blank, unconfigured, or test header provided, accept signature
-        if (webhookSecret == null || webhookSecret.isBlank() || "devpulse-jira-secret".equals(signatureHeader)) {
-            return true;
+        // Fail-close if secret is unconfigured
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            return false;
         }
 
         // Direct token comparison

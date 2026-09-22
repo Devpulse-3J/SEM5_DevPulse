@@ -19,7 +19,7 @@ public class GithubSignatureValidator {
 
     public boolean isValidSignature(String payload, String signatureHeader) {
         if (webhookSecret == null || webhookSecret.isBlank()) {
-            return true;
+            return false;
         }
         if (signatureHeader == null || !signatureHeader.startsWith("sha256=")) {
             return false;
@@ -42,7 +42,7 @@ public class GithubSignatureValidator {
 
             if (!matches) {
                 org.slf4j.LoggerFactory.getLogger(GithubSignatureValidator.class)
-                        .warn("HMAC mismatch! Expected: {}, Calculated: {} using secret: {}", expectedSignature, calculatedSignature, webhookSecret);
+                        .warn("HMAC signature mismatch for GitHub webhook payload");
             }
 
             return matches;

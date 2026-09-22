@@ -217,7 +217,7 @@ public class WebhookController {
 
     private void saveOrUpdateJiraIssue(Integer companyId, String payload) {
         try {
-            Integer effectiveCompanyId = (companyId == null || companyId <= 1) ? 12 : companyId;
+            Integer effectiveCompanyId = (companyId != null && companyId >= 1) ? companyId : 1;
             JsonNode root = objectMapper.readTree(payload);
             JsonNode issueNode = root.path("issue");
             if (issueNode.isMissingNode() || issueNode.isNull()) {
@@ -232,8 +232,8 @@ public class WebhookController {
                 String priority = fields.path("priority").path("name").asText("Medium");
                 String status = fields.path("status").path("name").asText("In Progress");
                 Integer storyPoints = fields.path("customfield_10016").asInt(fields.path("storyPoints").asInt(0));
-                Integer assigneeId = fields.path("assignee").path("id").asInt(34);
-                Integer projectId = 5;
+                Integer assigneeId = fields.path("assignee").has("id") ? fields.path("assignee").path("id").asInt(0) : null;
+                Integer projectId = root.path("project").has("id") ? root.path("project").path("id").asInt(1) : 1;
 
                 JiraIssue jiraIssue = jiraIssueRepository.findByCompanyIdAndJiraKey(effectiveCompanyId, jiraKey)
                         .orElseGet(() -> new JiraIssue(effectiveCompanyId, projectId, jiraKey, summary, issueType, priority,

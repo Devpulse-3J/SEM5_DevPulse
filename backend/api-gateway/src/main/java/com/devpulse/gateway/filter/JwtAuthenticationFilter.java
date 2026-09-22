@@ -26,14 +26,14 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
-    // Paths that don't need JWT — public endpoints and webhooks
+    // Paths that don't need JWT — public endpoints, webhooks, and OAuth callbacks
     private static final Set<String> PUBLIC_PATH_PREFIXES = Set.of(
             "/api/auth/register",
             "/api/auth/login",
             "/api/auth/refresh",
-            "/api/webhooks/",        // GitHub / Jira webhooks use HMAC, not JWT
-            "/api/integrations/jira/", // Jira integration status, disconnect & oauth
-            "/api/slack/",           // Slack integration & oauth
+            "/api/webhooks/",                       // GitHub / Jira webhooks use HMAC, not JWT
+            "/api/integrations/jira/oauth/callback", // Atlassian OAuth callback
+            "/api/slack/oauth/callback",            // Slack OAuth callback
             "/actuator/health",
             "/actuator/info"
     );

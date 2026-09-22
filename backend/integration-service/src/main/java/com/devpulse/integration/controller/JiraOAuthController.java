@@ -1,5 +1,8 @@
 package com.devpulse.integration.controller;
 
+import com.devpulse.integration.security.RequestContext;
+import com.devpulse.integration.security.RequestContextResolver;
+import jakarta.servlet.http.HttpServletRequest;
 import com.devpulse.integration.entity.JiraIssue;
 import com.devpulse.integration.repository.JiraIssueRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,19 +34,21 @@ public class JiraOAuthController {
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
-
     private final JiraIssueRepository jiraIssueRepository;
+    private final RequestContextResolver contextResolver;
 
     public JiraOAuthController(
             @Autowired(required = false) RestTemplate restTemplate,
             @Autowired(required = false) ObjectMapper objectMapper,
             @Autowired(required = false) JiraIssueRepository jiraIssueRepository,
+            @Autowired(required = false) RequestContextResolver contextResolver,
             @Value("${ATLASSIAN_CLIENT_ID:devpulse-jira-client-id}") String clientId,
             @Value("${ATLASSIAN_CLIENT_SECRET:}") String clientSecret,
             @Value("${ATLASSIAN_REDIRECT_URI:http://localhost:8080/api/integrations/jira/oauth/callback}") String redirectUri) {
         this.restTemplate = restTemplate != null ? restTemplate : new RestTemplate();
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.jiraIssueRepository = jiraIssueRepository;
+        this.contextResolver = contextResolver != null ? contextResolver : new RequestContextResolver();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.redirectUri = redirectUri;
@@ -54,7 +59,10 @@ public class JiraOAuthController {
      * GET /api/integrations/jira/oauth/install
      */
     @GetMapping("/oauth/install")
-    public ResponseEntity<Map<String, String>> getOAuthInstallUrl() {
+    public ResponseEntity<Map<String, String>> getOAuthInstallUrl(HttpServletRequest servletRequest) {
+        if (contextResolver != null) {
+            contextResolver.resolve(servletRequest);
+        }
         String scope = "read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access";
         String encodedScope = URLEncoder.encode(scope, StandardCharsets.UTF_8);
         String encodedRedirect = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
@@ -139,7 +147,10 @@ public class JiraOAuthController {
      * GET /api/integrations/jira/status
      */
     @GetMapping("/status")
-    public ResponseEntity<Map<String, Object>> getJiraStatus() {
+    public ResponseEntity<Map<String, Object>> getJiraStatus(HttpServletRequest servletRequest) {
+        if (contextResolver != null) {
+            contextResolver.resolve(servletRequest);
+        }
         Map<String, Object> response = new HashMap<>();
         response.put("connected", isConnected);
         response.put("provider", "jira");
@@ -151,13 +162,14 @@ public class JiraOAuthController {
     }
 
     /**
-     * Endpoint to retrieve stored Jira issues from Supabase DB.
+     * Endpoint to retrieve stored Jira issues from Supabase DB scoped by company.
      * GET /api/integrations/jira/issues
      */
     @GetMapping("/issues")
-    public ResponseEntity<List<JiraIssue>> getStoredIssues() {
+    public ResponseEntity<List<JiraIssue>> getStoredIssues(HttpServletRequest servletRequest) {
+        RequestContext context = contextResolver.resolve(servletRequest);
         if (jiraIssueRepository != null) {
-            return ResponseEntity.ok(jiraIssueRepository.findAll());
+            return ResponseEntity.ok(jiraIssueRepository.findByCompanyId(context.companyId()));
         }
         return ResponseEntity.ok(List.of());
     }
@@ -167,7 +179,10 @@ public class JiraOAuthController {
      * POST /api/integrations/jira/disconnect
      */
     @PostMapping("/disconnect")
-    public ResponseEntity<Map<String, Object>> disconnectJira() {
+    public ResponseEntity<Map<String, Object>> disconnectJira(HttpServletRequest servletRequest) {
+        if (contextResolver != null) {
+            contextResolver.resolve(servletRequest);
+        }
         isConnected = false;
         connectedSiteName = null;
         log.info("Disconnected Jira Cloud integration");
