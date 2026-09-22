@@ -36,19 +36,39 @@ public class EventReferenceRepository {
     }
 
     public Optional<Integer> resolveUserId(Integer companyId, Integer eventUserId) {
-        if (eventUserId == null) {
-            return Optional.empty();
+        return resolveUserId(companyId, eventUserId, null);
+    }
+
+    public Optional<Integer> resolveUserId(Integer companyId, Integer eventUserId, String email) {
+        if (eventUserId != null) {
+            List<Integer> byGithubId = jdbcTemplate.query("""
+                    SELECT user_id FROM users WHERE company_id = ? AND github_id = ?
+                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, eventUserId.longValue());
+            if (!byGithubId.isEmpty()) {
+                return Optional.of(byGithubId.get(0));
+            }
         }
-        List<Integer> byGithubId = jdbcTemplate.query("""
-                SELECT user_id FROM users WHERE company_id = ? AND github_id = ?
-                """, (rs, rowNum) -> rs.getInt("user_id"), companyId, eventUserId.longValue());
-        if (!byGithubId.isEmpty()) {
-            return Optional.of(byGithubId.get(0));
+        if (email != null && !email.isBlank()) {
+            List<Integer> byEmail = jdbcTemplate.query("""
+                    SELECT user_id FROM users WHERE company_id = ? AND LOWER(email) = LOWER(?)
+                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, email.trim());
+            if (!byEmail.isEmpty()) {
+                Integer userId = byEmail.get(0);
+                if (eventUserId != null) {
+                    jdbcTemplate.update("""
+                            UPDATE users SET github_id = ? WHERE user_id = ? AND github_id IS NULL
+                            """, eventUserId.longValue(), userId);
+                }
+                return Optional.of(userId);
+            }
         }
-        return jdbcTemplate.query("""
-                SELECT user_id FROM users WHERE company_id = ? AND user_id = ?
-                """, (rs, rowNum) -> rs.getInt("user_id"), companyId, eventUserId)
-                .stream().findFirst();
+        if (eventUserId != null) {
+            return jdbcTemplate.query("""
+                    SELECT user_id FROM users WHERE company_id = ? AND user_id = ?
+                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, eventUserId)
+                    .stream().findFirst();
+        }
+        return Optional.empty();
     }
 
     public Optional<Integer> resolveDeploymentProject(

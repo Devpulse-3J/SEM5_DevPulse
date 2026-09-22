@@ -63,7 +63,7 @@ public class MetricEventIngestionService {
         pullRequest.setTitle(event.getTitle());
         pullRequest.setDescription(event.getBody());
         pullRequest.setAuthorId(referenceRepository
-                .resolveUserId(event.getCompanyId(), event.getAuthorId()).orElse(null));
+                .resolveUserId(event.getCompanyId(), event.getAuthorId(), event.getAuthorEmail()).orElse(null));
         pullRequest.setBaseBranch(blankToDefault(event.getBaseBranch(), "main"));
         pullRequest.setDraft(event.isDraft());
         pullRequest.setState("open");
@@ -123,7 +123,7 @@ public class MetricEventIngestionService {
                     .ifPresent(pullRequest -> commit.setPrId(pullRequest.getId()));
         }
         commit.setAuthorId(referenceRepository
-                .resolveUserId(event.getCompanyId(), event.getAuthorId()).orElse(null));
+                .resolveUserId(event.getCompanyId(), event.getAuthorId(), event.getAuthorEmail()).orElse(null));
         commit.setMessage(event.getMessage());
         commit.setCommitTime(timestamp(
                 event.getCommitTime() == null ? event.getTimestamp() : event.getCommitTime()));
