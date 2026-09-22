@@ -12,7 +12,9 @@ import com.devpulse.integration.repository.RepoRepository;
 import com.devpulse.integration.security.ProjectAccessService;
 import com.devpulse.integration.security.RequestContext;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -179,6 +181,60 @@ public class ProjectGithubLinkService {
             info.put("directWebhookUrl", "https://github.com/" + repo.getFullName() + "/settings/hooks/new");
         }
         return info;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getAvailableRepositories(RequestContext context, Integer projectId) {
+        String appName = System.getenv().getOrDefault("GITHUB_APP_NAME", "DevPulseIntegration");
+        String connectUrl = "https://github.com/apps/" + appName + "/installations/new?state=" + projectId;
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("connectUrl", connectUrl);
+
+        List<Map<String, Object>> reposList = new ArrayList<>();
+        Map<String, Map<String, Object>> repoMap = new LinkedHashMap<>();
+
+        try {
+            JsonNode githubRepos = githubApiClient.fetchUserRepositories();
+            if (githubRepos != null && githubRepos.isArray()) {
+                for (JsonNode rNode : githubRepos) {
+                    String fullName = rNode.path("full_name").asText(null);
+                    String htmlUrl = rNode.path("html_url").asText(null);
+                    if (fullName != null && htmlUrl != null) {
+                        Map<String, Object> rItem = new HashMap<>();
+                        rItem.put("id", rNode.path("id").asLong(0L));
+                        rItem.put("name", rNode.path("name").asText(""));
+                        rItem.put("fullName", fullName);
+                        rItem.put("repoUrl", htmlUrl);
+                        repoMap.put(fullName.toLowerCase(), rItem);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch user repositories from GitHub API: {}", e.getMessage());
+        }
+
+        try {
+            List<Repo> companyRepos = repoRepository.findByCompanyId(context.companyId());
+            for (Repo repo : companyRepos) {
+                if (repo.getFullName() != null && !repoMap.containsKey(repo.getFullName().toLowerCase())) {
+                    Map<String, Object> rItem = new HashMap<>();
+                    rItem.put("id", repo.getGithubRepoId() != null ? repo.getGithubRepoId() : 0L);
+                    rItem.put("name", repo.getRepoName());
+                    rItem.put("fullName", repo.getFullName());
+                    rItem.put("repoUrl", "https://github.com/" + repo.getFullName());
+                    repoMap.put(repo.getFullName().toLowerCase(), rItem);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch company repos from DB: {}", e.getMessage());
+        }
+
+        reposList.addAll(repoMap.values());
+        response.put("installed", !reposList.isEmpty());
+        response.put("repositories", reposList);
+
+        return response;
     }
 
     /**

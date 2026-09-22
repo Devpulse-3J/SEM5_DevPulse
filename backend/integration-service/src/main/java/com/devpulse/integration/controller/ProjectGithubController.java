@@ -96,4 +96,13 @@ public class ProjectGithubController {
         }
         return ResponseEntity.ok(info);
     }
+
+    /** Returns available repositories for dropdown selection and app installation status. */
+    @GetMapping("/available-repos")
+    public ResponseEntity<Map<String, Object>> getAvailableRepos(
+            HttpServletRequest servletRequest,
+            @PathVariable("projectId") Integer projectId) {
+        RequestContext context = contextResolver.resolve(servletRequest);
+        return ResponseEntity.ok(projectGithubLinkService.getAvailableRepositories(context, projectId));
+    }
 }

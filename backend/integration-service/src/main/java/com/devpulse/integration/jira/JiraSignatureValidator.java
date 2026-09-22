@@ -29,6 +29,11 @@ public class JiraSignatureValidator {
             return false;
         }
 
+        // Fail-close if secret is unconfigured
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            return false;
+        }
+
         // Direct token comparison
         if (signatureHeader.equals(webhookSecret)) {
             return true;
