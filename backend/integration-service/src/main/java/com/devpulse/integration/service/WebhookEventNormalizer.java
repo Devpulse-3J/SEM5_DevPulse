@@ -106,9 +106,66 @@ public class WebhookEventNormalizer {
                     eventId, companyId, projectId, now,
                     deploymentId, sha, env, status, now
             );
+        } else if ("workflow_job".equalsIgnoreCase(eventType)) {
+            return normalizeWorkflowJobEvent(eventId, companyId, projectId, now, root);
         }
         log.warn("Unsupported GitHub event type or action: {}", eventType);
         return null;
+    }
+
+    /**
+     * The GitHub App this project uses is subscribed to Actions events, not the
+     * separate "Deployments" permission the {@code deployment}/{@code
+     * deployment_status} branch above expects — that permission needs the org
+     * owner's approval and hasn't been granted, so those two events never
+     * arrive in practice. {@code workflow_job} does arrive, and is a reliable
+     * proxy: CD's own "Deploy to EC2" job only runs, and only finishes, when a
+     * real deploy attempt happened.
+     *
+     * <p>{@code workflow_job} payloads carry no environment field, so this
+     * only ever reports "production" — this project has no other environment.
+     */
+    private BaseEvent normalizeWorkflowJobEvent(
+            String eventId, Integer companyId, Integer projectId, Instant now, JsonNode root) {
+        if (!"completed".equalsIgnoreCase(root.path("action").asText(""))) {
+            return null; // still queued or running; nothing to report yet
+        }
+
+        JsonNode jobNode = root.path("workflow_job");
+        // Every job in the CD workflow (test, build-and-push, deploy) fires this
+        // event; only the job that actually deploys should become a deployment.
+        if (!"Deploy to EC2".equalsIgnoreCase(jobNode.path("name").asText(""))) {
+            return null;
+        }
+
+        String conclusion = jobNode.path("conclusion").asText("");
+        if ("skipped".equalsIgnoreCase(conclusion)) {
+            return null; // an earlier job failed and this one never ran; nothing was deployed
+        }
+
+        Integer deploymentId = jobNode.path("id").asInt(1);
+        String sha = jobNode.path("head_sha").asText("abc1234");
+        String status = normalizeWorkflowConclusion(conclusion);
+
+        return new DeploymentCreatedEvent(
+                eventId, companyId, projectId, now,
+                deploymentId, sha, "production", status, now
+        );
+    }
+
+    /**
+     * workflow_job's conclusion values don't match what MetricEventIngestionService's
+     * normalizeStatus() accepts, so they're translated here rather than passed through.
+     */
+    private String normalizeWorkflowConclusion(String conclusion) {
+        if ("success".equalsIgnoreCase(conclusion)) {
+            return "success";
+        }
+        if ("cancelled".equalsIgnoreCase(conclusion) || "timed_out".equalsIgnoreCase(conclusion)) {
+            return "rolled_back";
+        }
+        // failure, neutral, action_required, or anything unrecognized.
+        return "failure";
     }
 
     private BaseEvent normalizeJiraEvent(String eventType, Integer companyId, JsonNode root) {
