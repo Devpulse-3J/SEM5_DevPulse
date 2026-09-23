@@ -17,16 +17,30 @@ import org.springframework.stereotype.Component;
 public class UserMapper {
 
     /**
-     * Converts a {@link User} entity and JWT token metadata into an {@link AuthResponse}.
+     * Converts a {@link User} entity and JWT token metadata into an {@link AuthResponse}
+     * scoped to the user's home company/role.
      */
     public AuthResponse toAuthResponse(User user, String token, long expiresIn) {
+        Integer homeCompanyId = user.getCompany() != null ? user.getCompany().getCompanyId() : null;
+        return toAuthResponse(user, token, expiresIn, homeCompanyId, user.getSystemRole());
+    }
+
+    /**
+     * Same as {@link #toAuthResponse(User, String, long)}, but scoped to an
+     * explicit company/role rather than the user's home company — used after
+     * {@code /auth/companies/{id}/switch}, where the active company is not
+     * {@code user.getCompany()}.
+     */
+    public AuthResponse toAuthResponse(User user, String token, long expiresIn,
+                                        Integer companyId, String roleInCompany) {
         return new AuthResponse(
                 token,
                 expiresIn,
                 user.getUserId(),
                 user.getEmail(),
                 user.getFullName(),
-                user.getSystemRole()
+                roleInCompany,
+                companyId
         );
     }
 

@@ -29,6 +29,7 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
     private final OrganizationInvitationRepository orgInviteRepository;
     private final WorkspaceJoinRequestRepository joinRequestRepository;
     private final ProjectInvitationRepository projectInviteRepository;
+    private final CompanyMemberRepository companyMemberRepository;
     private final JavaMailSender mailSender;
 
     public WorkspaceInviteServiceImpl(
@@ -38,6 +39,7 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
             OrganizationInvitationRepository orgInviteRepository,
             WorkspaceJoinRequestRepository joinRequestRepository,
             ProjectInvitationRepository projectInviteRepository,
+            CompanyMemberRepository companyMemberRepository,
             @Autowired(required = false) JavaMailSender mailSender) {
         this.companyRepository = companyRepository;
         this.userRepository = userRepository;
@@ -45,6 +47,7 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         this.orgInviteRepository = orgInviteRepository;
         this.joinRequestRepository = joinRequestRepository;
         this.projectInviteRepository = projectInviteRepository;
+        this.companyMemberRepository = companyMemberRepository;
         this.mailSender = mailSender;
     }
 
@@ -114,6 +117,8 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         user.setCompany(invitation.getCompany());
         user.setSystemRole(invitation.getRole());
         User updatedUser = userRepository.save(user);
+        recordCompanyMembership(updatedUser.getUserId(), invitation.getCompany().getCompanyId(),
+                invitation.getRole());
 
         invitation.setStatus("accepted");
         orgInviteRepository.save(invitation);
@@ -190,6 +195,9 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
         User targetUser = joinRequest.getUser();
         targetUser.setCompany(joinRequest.getCompany());
         userRepository.save(targetUser);
+        // A join request carries no requested role, so it always grants 'member' -
+        // an admin seat is never handed out through this path.
+        recordCompanyMembership(targetUser.getUserId(), joinRequest.getCompany().getCompanyId(), "member");
 
         log.info("Admin {} approved join request ID {} for user {}", actor.getEmail(), requestId,
                 targetUser.getEmail());
@@ -220,6 +228,17 @@ public class WorkspaceInviteServiceImpl implements WorkspaceInviteService {
             return companyRepository.findAll();
         }
         return companyRepository.findByCompanyNameContainingIgnoreCase(query.trim());
+    }
+
+    /**
+     * Mirrors a company assignment into {@code company_members} alongside the
+     * legacy {@code users.company_id}/{@code system_role} write above it,
+     * without altering either. Idempotent: a row already recorded for this
+     * (user, company) pair is left as-is.
+     */
+    private void recordCompanyMembership(Integer userId, Integer companyId, String role) {
+        companyMemberRepository.findByUserIdAndCompanyId(userId, companyId)
+                .orElseGet(() -> companyMemberRepository.save(new CompanyMember(userId, companyId, role)));
     }
 
     private void validateCompanyAdminAccess(User actor, Integer companyId) {

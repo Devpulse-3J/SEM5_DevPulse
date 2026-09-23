@@ -66,7 +66,7 @@ class ActivityMetricsServicePullRequestsTest {
     }
 
     private void givenRows(PullRequestRow... rows) {
-        when(queryRepository.findPullRequests(COMPANY_ID, PROJECT_ID, 100, 0)).thenReturn(List.of(rows));
+        when(queryRepository.findPullRequests(COMPANY_ID, PROJECT_ID, null, 100, 0)).thenReturn(List.of(rows));
         when(queryRepository.findReviews(any())).thenReturn(List.of());
         when(queryRepository.findChecks(any())).thenReturn(List.of());
     }
@@ -77,7 +77,7 @@ class ActivityMetricsServicePullRequestsTest {
         when(queryRepository.findLatestPredictions(COMPANY_ID, List.of(37)))
                 .thenReturn(List.of(prediction(37, 0.7933, "high")));
 
-        List<PullRequestResponse> result = service.getPullRequests(context, PROJECT_ID, 100, 0);
+        List<PullRequestResponse> result = service.getPullRequests(context, PROJECT_ID, null, 100, 0);
 
         RiskAnalysisResponse risk = result.get(0).riskAnalysis();
         assertThat(risk).isNotNull();
@@ -95,7 +95,7 @@ class ActivityMetricsServicePullRequestsTest {
         givenRows(row(38, 38, "not scored yet"));
         when(queryRepository.findLatestPredictions(COMPANY_ID, List.of(38))).thenReturn(List.of());
 
-        assertThat(service.getPullRequests(context, PROJECT_ID, 100, 0).get(0).riskAnalysis()).isNull();
+        assertThat(service.getPullRequests(context, PROJECT_ID, null, 100, 0).get(0).riskAnalysis()).isNull();
     }
 
     @Test
@@ -104,7 +104,7 @@ class ActivityMetricsServicePullRequestsTest {
         when(queryRepository.findLatestPredictions(COMPANY_ID, List.of(1, 2, 3)))
                 .thenReturn(List.of(prediction(1, 0.15, "low"), prediction(3, 0.55, "medium")));
 
-        List<PullRequestResponse> result = service.getPullRequests(context, PROJECT_ID, 100, 0);
+        List<PullRequestResponse> result = service.getPullRequests(context, PROJECT_ID, null, 100, 0);
 
         assertThat(result.get(0).riskAnalysis().riskLevel()).isEqualTo("LOW");
         assertThat(result.get(1).riskAnalysis()).isNull();
@@ -117,7 +117,7 @@ class ActivityMetricsServicePullRequestsTest {
         givenRows(row(1, 1, "a"), row(2, 2, "b"));
         when(queryRepository.findLatestPredictions(anyInt(), any())).thenReturn(List.of());
 
-        service.getPullRequests(context, PROJECT_ID, 100, 0);
+        service.getPullRequests(context, PROJECT_ID, null, 100, 0);
 
         verify(queryRepository).findLatestPredictions(COMPANY_ID, List.of(1, 2));
     }
@@ -127,7 +127,7 @@ class ActivityMetricsServicePullRequestsTest {
         doThrow(new ApiException(HttpStatus.FORBIDDEN, "PROJECT_ACCESS_DENIED", "not a member"))
                 .when(accessService).requireViewAccess(context, PROJECT_ID);
 
-        assertThatThrownBy(() -> service.getPullRequests(context, PROJECT_ID, 100, 0))
+        assertThatThrownBy(() -> service.getPullRequests(context, PROJECT_ID, null, 100, 0))
                 .isInstanceOf(ApiException.class);
 
         verify(queryRepository, never()).findLatestPredictions(anyInt(), any());

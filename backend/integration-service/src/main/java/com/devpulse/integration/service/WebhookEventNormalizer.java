@@ -74,6 +74,11 @@ public class WebhookEventNormalizer {
                         prNode.path("author_association").asText(null)
                 );
                 openedEvent.setBody(prNode.path("body").asText(null));
+                String authorEmail = prNode.path("user").path("email").asText(null);
+                if (authorEmail == null || authorEmail.isBlank()) {
+                    authorEmail = root.path("sender").path("email").asText(null);
+                }
+                openedEvent.setAuthorEmail(authorEmail);
                 return openedEvent;
             } else if ("closed".equalsIgnoreCase(action)) {
                 boolean isMerged = prNode.path("merged").asBoolean(false);
@@ -90,25 +95,118 @@ public class WebhookEventNormalizer {
             String message = headCommit.path("message").asText("Pushed commit");
             Integer authorId = root.path("sender").path("id").asInt(1);
 
-            return new CommitPushedEvent(
+            CommitPushedEvent commitEvent = new CommitPushedEvent(
                     eventId, companyId, projectId, now,
                     commitSha, repoId, null, authorId,
                     message, now, 0, 0
             );
+            String authorEmail = headCommit.path("author").path("email").asText(null);
+            if (authorEmail == null || authorEmail.isBlank()) {
+                authorEmail = headCommit.path("committer").path("email").asText(null);
+            }
+            if (authorEmail == null || authorEmail.isBlank()) {
+                authorEmail = root.path("pusher").path("email").asText(null);
+            }
+            commitEvent.setAuthorEmail(authorEmail);
+            return commitEvent;
         } else if ("deployment".equalsIgnoreCase(eventType) || "deployment_status".equalsIgnoreCase(eventType)) {
             JsonNode depNode = root.path("deployment");
-            Integer deploymentId = depNode.path("id").asInt(1);
-            String sha = depNode.path("sha").asText("abc1234");
-            String env = depNode.path("environment").asText("production");
-            String status = root.path("deployment_status").path("state").asText("success");
+            if (depNode.isMissingNode() || depNode.isNull()) {
+                depNode = root.path("deployment_status").path("deployment");
+            }
+            Long externalDeploymentId = depNode.path("id").asLong(1L);
+            int deploymentId = (int) (Math.abs(externalDeploymentId) % Integer.MAX_VALUE);
+            if (deploymentId <= 0) {
+                deploymentId = 1;
+            }
+
+            String sha = depNode.path("sha").asText("");
+            if (sha.isBlank()) {
+                sha = root.path("deployment_status").path("deployment").path("sha").asText("");
+            }
+            if (sha.isBlank()) {
+                sha = root.path("sha").asText("abc1234");
+            }
+
+            String env = depNode.path("environment").asText("");
+            if (env.isBlank()) {
+                env = root.path("deployment_status").path("environment").asText("production");
+            }
+
+            String status;
+            if ("deployment_status".equalsIgnoreCase(eventType)) {
+                status = root.path("deployment_status").path("state").asText("success");
+            } else {
+                status = "pending";
+            }
+
+            Long githubRepoId = root.path("repository").path("id").asLong(1L);
+            int targetRepoId = (int) (Math.abs(githubRepoId) % Integer.MAX_VALUE);
 
             return new DeploymentCreatedEvent(
-                    eventId, companyId, projectId, now,
+                    eventId, companyId, targetRepoId, now,
                     deploymentId, sha, env, status, now
             );
+        } else if ("workflow_job".equalsIgnoreCase(eventType)) {
+            return normalizeWorkflowJobEvent(eventId, companyId, projectId, now, root);
         }
         log.warn("Unsupported GitHub event type or action: {}", eventType);
         return null;
+    }
+
+    /**
+     * The GitHub App this project uses is subscribed to Actions events, not the
+     * separate "Deployments" permission the {@code deployment}/{@code
+     * deployment_status} branch above expects — that permission needs the org
+     * owner's approval and hasn't been granted, so those two events never
+     * arrive in practice. {@code workflow_job} does arrive, and is a reliable
+     * proxy: CD's own "Deploy to EC2" job only runs, and only finishes, when a
+     * real deploy attempt happened.
+     *
+     * <p>{@code workflow_job} payloads carry no environment field, so this
+     * only ever reports "production" — this project has no other environment.
+     */
+    private BaseEvent normalizeWorkflowJobEvent(
+            String eventId, Integer companyId, Integer projectId, Instant now, JsonNode root) {
+        if (!"completed".equalsIgnoreCase(root.path("action").asText(""))) {
+            return null; // still queued or running; nothing to report yet
+        }
+
+        JsonNode jobNode = root.path("workflow_job");
+        // Every job in the CD workflow (test, build-and-push, deploy) fires this
+        // event; only the job that actually deploys should become a deployment.
+        if (!"Deploy to EC2".equalsIgnoreCase(jobNode.path("name").asText(""))) {
+            return null;
+        }
+
+        String conclusion = jobNode.path("conclusion").asText("");
+        if ("skipped".equalsIgnoreCase(conclusion)) {
+            return null; // an earlier job failed and this one never ran; nothing was deployed
+        }
+
+        Integer deploymentId = jobNode.path("id").asInt(1);
+        String sha = jobNode.path("head_sha").asText("abc1234");
+        String status = normalizeWorkflowConclusion(conclusion);
+
+        return new DeploymentCreatedEvent(
+                eventId, companyId, projectId, now,
+                deploymentId, sha, "production", status, now
+        );
+    }
+
+    /**
+     * workflow_job's conclusion values don't match what MetricEventIngestionService's
+     * normalizeStatus() accepts, so they're translated here rather than passed through.
+     */
+    private String normalizeWorkflowConclusion(String conclusion) {
+        if ("success".equalsIgnoreCase(conclusion)) {
+            return "success";
+        }
+        if ("cancelled".equalsIgnoreCase(conclusion) || "timed_out".equalsIgnoreCase(conclusion)) {
+            return "rolled_back";
+        }
+        // failure, neutral, action_required, or anything unrecognized.
+        return "failure";
     }
 
     private BaseEvent normalizeJiraEvent(String eventType, Integer companyId, JsonNode root) {

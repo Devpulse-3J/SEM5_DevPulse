@@ -3,10 +3,11 @@ package com.devpulse.auth.service;
 import com.devpulse.auth.dto.InviteByEmailRequest;
 import com.devpulse.auth.dto.InviteResultResponse;
 import com.devpulse.auth.entity.Company;
+import com.devpulse.auth.entity.CompanyMember;
 import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.User;
-import com.devpulse.auth.exception.ConflictException;
+import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.ProjectInvitationRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
@@ -48,6 +49,7 @@ public class ProjectMemberInviteTest {
     private ProjectMemberRepository projectMemberRepository;
     private UserRepository userRepository;
     private ProjectInvitationRepository projectInvitationRepository;
+    private CompanyMemberRepository companyMemberRepository;
     private JavaMailSender mailSender;
     private ProjectMemberServiceImpl service;
 
@@ -60,12 +62,14 @@ public class ProjectMemberInviteTest {
         projectMemberRepository = mock(ProjectMemberRepository.class);
         userRepository = mock(UserRepository.class);
         projectInvitationRepository = mock(ProjectInvitationRepository.class);
+        companyMemberRepository = mock(CompanyMemberRepository.class);
         mailSender = mock(JavaMailSender.class);
         ProjectAccessService projectAccessService = mock(ProjectAccessService.class);
 
         // Trailing slash on purpose: links must not contain a double slash.
         service = new ProjectMemberServiceImpl(projectMemberRepository, userRepository,
-                projectAccessService, projectInvitationRepository, FRONTEND + "/", mailSender);
+                projectAccessService, projectInvitationRepository, companyMemberRepository,
+                FRONTEND + "/", mailSender);
 
         context = new RequestContext(1, COMPANY_ID);
 
@@ -86,6 +90,10 @@ public class ProjectMemberInviteTest {
         when(projectInvitationRepository
                 .findByProjectIdAndEmailIgnoreCaseAndStatus(anyInt(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
+        when(companyMemberRepository.findByUserIdAndCompanyId(anyInt(), anyInt()))
+                .thenReturn(Optional.empty());
+        when(companyMemberRepository.save(any(CompanyMember.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     private InviteByEmailRequest request(String email) {
@@ -258,7 +266,7 @@ public class ProjectMemberInviteTest {
     }
 
     @Test
-    public void invitingAnAddressOwnedByAnotherCompanyIsRejected() {
+    public void invitingAnAddressWithAHomeCompanyElsewhereAddsThemAsACrossCompanyMember() {
         Company otherCompany = new Company();
         otherCompany.setCompanyId(1);
 
@@ -268,15 +276,46 @@ public class ProjectMemberInviteTest {
         elsewhere.setCompany(otherCompany);
         when(userRepository.findByEmailIgnoreCase("taken@example.com"))
                 .thenReturn(Optional.of(elsewhere));
+        when(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, 20))
+                .thenReturn(Optional.empty());
 
-        // users.email is globally UNIQUE, so one address cannot exist in two
-        // companies. This is the case that stranded a self-registered developer
-        // in the default company where no admin could reach them.
-        assertThrows(ConflictException.class,
-                () -> service.inviteByEmail(context, PROJECT_ID, request("taken@example.com")));
+        // A non-admin may belong to many companies: their home company
+        // (users.company_id) stays untouched, but they gain a company_members
+        // row for this workspace and are added to the project directly.
+        InviteResultResponse response =
+                service.inviteByEmail(context, PROJECT_ID, request("taken@example.com"));
+
+        assertEquals(InviteResultResponse.ADDED_EXISTING_USER, response.getStatus());
+        assertEquals(1, elsewhere.getCompany().getCompanyId(), "home company is left alone");
         verify(userRepository, never()).save(any(User.class));
-        verify(projectMemberRepository, never()).save(any(ProjectMember.class));
+        verify(projectMemberRepository).save(any(ProjectMember.class));
         verify(projectInvitationRepository, never()).save(any(ProjectInvitation.class));
+
+        ArgumentCaptor<CompanyMember> captor = ArgumentCaptor.forClass(CompanyMember.class);
+        verify(companyMemberRepository).save(captor.capture());
+        assertEquals(20, captor.getValue().getUserId());
+        assertEquals(COMPANY_ID, captor.getValue().getCompanyId());
+        assertEquals("member", captor.getValue().getRole());
+    }
+
+    @Test
+    public void invitingSomeoneAlreadyRecordedInThisCompanyDoesNotDuplicateTheMembershipRow() {
+        User existing = new User();
+        existing.setUserId(20);
+        existing.setEmail("member@example.com");
+        existing.setCompany(company);
+        when(userRepository.findByEmailIgnoreCase("member@example.com"))
+                .thenReturn(Optional.of(existing));
+        when(projectMemberRepository.findByProjectIdAndUserId(PROJECT_ID, 20))
+                .thenReturn(Optional.empty());
+        when(companyMemberRepository.findByUserIdAndCompanyId(20, COMPANY_ID))
+                .thenReturn(Optional.of(new CompanyMember(20, COMPANY_ID, "admin")));
+
+        service.inviteByEmail(context, PROJECT_ID, request("member@example.com"));
+
+        // A row already exists (e.g. this user is this company's admin) -
+        // ensureCompanyMembership must not overwrite or duplicate it.
+        verify(companyMemberRepository, never()).save(any(CompanyMember.class));
     }
 
     @Test

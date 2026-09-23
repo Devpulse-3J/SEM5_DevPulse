@@ -20,8 +20,8 @@ public class ActivityQueryRepository {
     }
 
     public List<PullRequestRow> findPullRequests(
-            Integer companyId, Integer projectId, int limit, int offset) {
-        return jdbcTemplate.query("""
+            Integer companyId, Integer projectId, Integer authorId, int limit, int offset) {
+        StringBuilder sql = new StringBuilder("""
                 SELECT pr.pr_id, pr.github_pr_number, pr.title, pr.description,
                        pr.author_id, u.full_name AS author_name, u.avatar_url AS author_avatar,
                        r.repo_id, r.repo_name, pr.is_draft, pr.state, pr.head_branch,
@@ -30,14 +30,22 @@ public class ActivityQueryRepository {
                 FROM pull_requests pr
                 JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
                 LEFT JOIN users u ON u.user_id = pr.author_id AND u.company_id = pr.company_id
-                WHERE pr.company_id = :companyId AND r.project_id = :projectId
-                ORDER BY pr.created_at DESC
-                LIMIT :limit OFFSET :offset
-                """, Map.of(
-                        "companyId", companyId,
-                        "projectId", projectId,
-                        "limit", limit,
-                        "offset", offset),
+                WHERE pr.company_id = :companyId
+                """);
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("companyId", companyId)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        if (projectId != null) {
+            sql.append(" AND r.project_id = :projectId");
+            parameters.addValue("projectId", projectId);
+        }
+        if (authorId != null) {
+            sql.append(" AND pr.author_id = :authorId");
+            parameters.addValue("authorId", authorId);
+        }
+        sql.append(" ORDER BY pr.created_at DESC LIMIT :limit OFFSET :offset");
+        return jdbcTemplate.query(sql.toString(), parameters,
                 (rs, rowNum) -> new PullRequestRow(
                         rs.getInt("pr_id"),
                         rs.getInt("github_pr_number"),

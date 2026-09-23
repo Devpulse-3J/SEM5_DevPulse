@@ -5,6 +5,7 @@ import com.devpulse.auth.entity.*;
 import com.devpulse.auth.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.OffsetDateTime;
@@ -23,6 +24,7 @@ public class WorkspaceInviteServiceTest {
     private OrganizationInvitationRepository orgInviteRepository;
     private WorkspaceJoinRequestRepository joinRequestRepository;
     private ProjectInvitationRepository projectInviteRepository;
+    private CompanyMemberRepository companyMemberRepository;
     private WorkspaceInviteServiceImpl service;
 
     private Company company;
@@ -37,11 +39,18 @@ public class WorkspaceInviteServiceTest {
         orgInviteRepository = mock(OrganizationInvitationRepository.class);
         joinRequestRepository = mock(WorkspaceJoinRequestRepository.class);
         projectInviteRepository = mock(ProjectInvitationRepository.class);
+        companyMemberRepository = mock(CompanyMemberRepository.class);
 
         service = new WorkspaceInviteServiceImpl(
                 companyRepository, userRepository, projectMemberRepository,
-                orgInviteRepository, joinRequestRepository, projectInviteRepository, null
+                orgInviteRepository, joinRequestRepository, projectInviteRepository,
+                companyMemberRepository, null
         );
+
+        when(companyMemberRepository.findByUserIdAndCompanyId(anyInt(), anyInt()))
+                .thenReturn(Optional.empty());
+        when(companyMemberRepository.save(any(CompanyMember.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         company = new Company();
         company.setCompanyId(1);
@@ -97,6 +106,12 @@ public class WorkspaceInviteServiceTest {
         assertNotNull(result);
         assertEquals(company, result.getCompany());
         assertEquals("accepted", invitation.getStatus());
+
+        ArgumentCaptor<CompanyMember> membership = ArgumentCaptor.forClass(CompanyMember.class);
+        verify(companyMemberRepository).save(membership.capture());
+        assertEquals(20, membership.getValue().getUserId());
+        assertEquals(1, membership.getValue().getCompanyId());
+        assertEquals("member", membership.getValue().getRole());
     }
 
     @Test
@@ -128,5 +143,12 @@ public class WorkspaceInviteServiceTest {
         assertEquals("approved", result.getStatus());
         assertEquals(adminUser, result.getReviewedBy());
         assertEquals(company, regularUser.getCompany());
+
+        ArgumentCaptor<CompanyMember> membership = ArgumentCaptor.forClass(CompanyMember.class);
+        verify(companyMemberRepository).save(membership.capture());
+        assertEquals(20, membership.getValue().getUserId());
+        assertEquals(1, membership.getValue().getCompanyId());
+        assertEquals("member", membership.getValue().getRole(),
+                "a join request carries no role, so it never grants admin");
     }
 }

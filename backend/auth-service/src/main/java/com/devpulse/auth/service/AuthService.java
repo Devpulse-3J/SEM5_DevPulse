@@ -34,4 +34,16 @@ public interface AuthService {
      * @return UserProfileResponse containing company info and per-project roles
      */
     UserProfileResponse getUserProfile(Integer userId);
+
+    /**
+     * Issues a new token scoped to {@code targetCompanyId} instead of the
+     * caller's home company, provided a {@code company_members} row records
+     * that they belong there. Lets a non-admin who has been added to more
+     * than one company act in whichever one this token names; their home
+     * company (users.company_id) is untouched.
+     *
+     * @throws com.devpulse.auth.exception.ForbiddenException if the caller has
+     *         no recorded membership in that company
+     */
+    AuthResponse switchCompany(Integer userId, Integer targetCompanyId);
 }

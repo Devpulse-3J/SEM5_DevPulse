@@ -114,6 +114,74 @@ class WebhookEventNormalizerTest {
         assertEquals("staging", depCreated.getEnvironment());
     }
 
+    // -- workflow_job (proxy for deployment events, see the normalizer's javadoc) --
+
+    private static String workflowJobJson(String action, String jobName, String conclusion) {
+        String conclusionField = conclusion == null ? "null" : "\"" + conclusion + "\"";
+        return "{\"action\":\"" + action + "\",\"workflow_job\":{\"id\":900,"
+                + "\"name\":\"" + jobName + "\",\"head_sha\":\"deploysha123\","
+                + "\"conclusion\":" + conclusionField + "},\"repository\":{\"id\":77}}";
+    }
+
+    @Test
+    void testWorkflowJobForTheDeployJobBecomesADeploymentCreatedEvent() {
+        String json = workflowJobJson("completed", "Deploy to EC2", "success");
+
+        BaseEvent event = normalizer.normalize("github", "workflow_job", 1, json);
+
+        assertNotNull(event);
+        assertInstanceOf(DeploymentCreatedEvent.class, event);
+        DeploymentCreatedEvent deployment = (DeploymentCreatedEvent) event;
+        assertEquals("deploysha123", deployment.getCommitSha());
+        assertEquals("production", deployment.getEnvironment());
+        assertEquals("success", deployment.getStatus());
+    }
+
+    @Test
+    void testWorkflowJobForADifferentJobIsIgnored() {
+        // "test" and "build-and-push" also fire this event; only "Deploy to EC2" deployed anything.
+        String json = workflowJobJson("completed", "Test gate", "success");
+
+        assertNull(normalizer.normalize("github", "workflow_job", 1, json));
+    }
+
+    @Test
+    void testWorkflowJobStillRunningIsIgnored() {
+        for (String action : new String[] {"queued", "in_progress"}) {
+            String json = workflowJobJson(action, "Deploy to EC2", null);
+            assertNull(normalizer.normalize("github", "workflow_job", 1, json),
+                    "action=" + action + " should not report a deployment yet");
+        }
+    }
+
+    @Test
+    void testWorkflowJobSkippedMeansNothingWasDeployed() {
+        // An earlier job (test/build-and-push) failed, so `deploy` never ran at all.
+        String json = workflowJobJson("completed", "Deploy to EC2", "skipped");
+
+        assertNull(normalizer.normalize("github", "workflow_job", 1, json));
+    }
+
+    @Test
+    void testWorkflowJobFailureMapsToAStatusMetricsServiceAccepts() {
+        String json = workflowJobJson("completed", "Deploy to EC2", "failure");
+
+        DeploymentCreatedEvent deployment =
+                (DeploymentCreatedEvent) normalizer.normalize("github", "workflow_job", 1, json);
+
+        assertEquals("failure", deployment.getStatus());
+    }
+
+    @Test
+    void testWorkflowJobCancelledOrTimedOutMapsToRolledBack() {
+        for (String conclusion : new String[] {"cancelled", "timed_out"}) {
+            String json = workflowJobJson("completed", "Deploy to EC2", conclusion);
+            DeploymentCreatedEvent deployment =
+                    (DeploymentCreatedEvent) normalizer.normalize("github", "workflow_job", 1, json);
+            assertEquals("rolled_back", deployment.getStatus(), "conclusion=" + conclusion);
+        }
+    }
+
     @Test
     void testNormalizeJiraIssueUpdatedEvent() {
         String json = "{\"issue\":{\"id\":300,\"key\":\"DEV-99\",\"fields\":{\"summary\":\"Implement Auth API\",\"issuetype\":{\"name\":\"Story\"},\"priority\":{\"name\":\"High\"},\"status\":{\"name\":\"In Progress\"},\"customfield_10016\":5}}}";

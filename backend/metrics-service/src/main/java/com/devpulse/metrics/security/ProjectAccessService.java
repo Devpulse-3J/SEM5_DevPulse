@@ -29,4 +29,10 @@ public class ProjectAccessService {
         }
         return project;
     }
+
+    public void requireCompanyAccess(RequestContext context) {
+        projectScopeRepository.findSystemRole(context.companyId(), context.userId())
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "USER_CONTEXT_NOT_FOUND",
+                        "The authenticated user does not belong to this company"));
+    }
 }

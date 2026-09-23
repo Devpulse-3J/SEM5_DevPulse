@@ -5,14 +5,17 @@ import com.devpulse.auth.dto.LoginRequest;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.dto.UserProfileResponse;
 import com.devpulse.auth.entity.Company;
+import com.devpulse.auth.entity.CompanyMember;
 import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.SystemRole;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.DuplicateEmailException;
+import com.devpulse.auth.exception.ForbiddenException;
 import com.devpulse.auth.exception.InvalidCredentialsException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
 import com.devpulse.auth.mapper.UserMapper;
+import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
@@ -37,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final CompanyMemberRepository companyMemberRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -46,6 +50,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthServiceImpl(UserRepository userRepository,
                            CompanyRepository companyRepository,
                            ProjectMemberRepository projectMemberRepository,
+                           CompanyMemberRepository companyMemberRepository,
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
                            AuthenticationManager authenticationManager,
@@ -54,6 +59,7 @@ public class AuthServiceImpl implements AuthService {
         this.userRepository = userRepository;
         this.companyRepository = companyRepository;
         this.projectMemberRepository = projectMemberRepository;
+        this.companyMemberRepository = companyMemberRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
@@ -121,9 +127,30 @@ public class AuthServiceImpl implements AuthService {
         user.setCreatedAt(OffsetDateTime.now());
 
         User savedUser = userRepository.save(user);
+
+        // Mirrors users.company_id/system_role into company_members so the new
+        // multi-company model already has this row; users.company_id stays the
+        // source of truth for this user's home company and is untouched.
+        if (company != null) {
+            recordCompanyMembership(savedUser.getUserId(), company.getCompanyId(),
+                    isAdmin ? SystemRole.ADMIN : SystemRole.MEMBER);
+        }
+
         String token = jwtService.generateToken(savedUser);
 
         return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+    }
+
+    /**
+     * Dual-writes a {@code company_members} row alongside the legacy
+     * {@code users.company_id}/{@code system_role} columns, without altering
+     * either. Idempotent, so it can never conflict with a row that already
+     * exists for this (user, company) pair.
+     */
+    private void recordCompanyMembership(Integer userId, Integer companyId, SystemRole role) {
+        companyMemberRepository.findByUserIdAndCompanyId(userId, companyId)
+                .orElseGet(() -> companyMemberRepository.save(
+                        new CompanyMember(userId, companyId, role.toDbValue())));
     }
 
     /**
@@ -150,6 +177,7 @@ public class AuthServiceImpl implements AuthService {
 
         User savedUser = userRepository.save(user);
         invitationClaimService.complete(invitation, savedUser);
+        recordCompanyMembership(savedUser.getUserId(), company.getCompanyId(), SystemRole.MEMBER);
 
         String token = jwtService.generateToken(savedUser);
         return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
@@ -210,5 +238,20 @@ public class AuthServiceImpl implements AuthService {
         List<ProjectMember> memberships = projectMemberRepository.findByUserId(userId);
 
         return userMapper.toUserProfileResponse(user, memberships);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AuthResponse switchCompany(Integer userId, Integer targetCompanyId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        CompanyMember membership = companyMemberRepository
+                .findByUserIdAndCompanyId(userId, targetCompanyId)
+                .orElseThrow(() -> new ForbiddenException("You are not a member of that company"));
+
+        String token = jwtService.generateToken(user, targetCompanyId, membership.getRole());
+        return userMapper.toAuthResponse(user, token, jwtService.getExpirationSeconds(),
+                targetCompanyId, membership.getRole());
     }
 }

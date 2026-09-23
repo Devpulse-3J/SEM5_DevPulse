@@ -169,3 +169,9 @@ the one most likely to need splitting if scope grows.
 GitHub events (pull request, push, deployment) reach integration-service and metrics-service.
 It can be removed at any time. -->
 
+<!-- CD check: another harmless docs-only change, used to trigger a fresh CD run and confirm
+whether the deployment webhook now arrives. Can be removed at any time. -->
+
+<!-- CD check 2: testing after the GitHub App's event subscriptions were updated. Can be
+removed at any time. -->
+

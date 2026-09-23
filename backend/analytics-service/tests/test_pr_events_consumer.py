@@ -163,3 +163,86 @@ def test_event_without_prid_or_companyid_is_dropped_without_a_lookup(factory, sc
 
     assert scored == []
     assert channel.sleeps == []
+
+
+# -- consume_forever: must never give up on a transient connection failure ---
+#
+# Regression: this used to be a single unguarded pika.BlockingConnection(...)
+# call. Any failure - most commonly RabbitMQ not being reachable yet the
+# instant this background thread starts - raised out of the thread's target
+# function and killed it silently for the rest of the process's life. 232
+# pr.opened events backed up with zero consumers before this was caught.
+
+class _StopLoop(BaseException):
+    """Escapes the infinite retry loop after the behaviour under test is observed.
+
+    Must NOT subclass Exception: consume_forever()'s own `except Exception:`
+    would otherwise catch it as just another connection failure and retry
+    forever instead of letting it propagate - which is exactly what happened
+    here once, running the fake connection function in an unbounded loop.
+    """
+
+
+def test_a_connection_failure_at_startup_is_retried_not_fatal(monkeypatch):
+    attempts: list[int] = []
+    sleeps: list[float] = []
+
+    def fake_connect():
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise pika.exceptions.AMQPConnectionError("not ready yet")
+        raise _StopLoop  # stand in for a clean run once connected
+
+    monkeypatch.setattr(pr_events, "_connect_and_consume", fake_connect)
+    monkeypatch.setattr(pr_events.time, "sleep", lambda s: sleeps.append(s))
+
+    with pytest.raises(_StopLoop):
+        pr_events.consume_forever()
+
+    assert len(attempts) == 3, "must keep retrying past the first (and second) failure"
+
+
+def test_retry_delay_backs_off_and_is_capped(monkeypatch):
+    sleeps: list[float] = []
+    calls = {"n": 0}
+
+    def fake_connect():
+        calls["n"] += 1
+        if calls["n"] > 5:
+            raise _StopLoop
+        raise pika.exceptions.AMQPConnectionError("still down")
+
+    monkeypatch.setattr(pr_events, "_connect_and_consume", fake_connect)
+    monkeypatch.setattr(pr_events.time, "sleep", lambda s: sleeps.append(s))
+
+    with pytest.raises(_StopLoop):
+        pr_events.consume_forever()
+
+    assert sleeps[0] == pr_events.RECONNECT_DELAY_SECONDS
+    assert sleeps == sorted(sleeps), "delay must not decrease between retries"
+    assert all(s <= pr_events.MAX_RECONNECT_DELAY_SECONDS for s in sleeps), "must stay capped"
+
+
+def test_a_mid_run_disconnect_is_also_retried(monkeypatch):
+    """A drop after connecting successfully (e.g. StreamLostError from inside
+    start_consuming()) must be retried exactly like a startup failure - the
+    old code had no protection here either, since everything lived in one
+    unguarded call.
+    """
+    calls = {"n": 0}
+
+    def fake_connect():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None  # first "connection" runs cleanly...
+        if calls["n"] == 2:
+            raise pika.exceptions.StreamLostError("broker went away mid-run")
+        raise _StopLoop
+
+    monkeypatch.setattr(pr_events, "_connect_and_consume", fake_connect)
+    monkeypatch.setattr(pr_events.time, "sleep", lambda s: None)
+
+    with pytest.raises(_StopLoop):
+        pr_events.consume_forever()
+
+    assert calls["n"] == 3
