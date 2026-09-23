@@ -44,14 +44,26 @@ public class JwtService {
      * Generates a signed JWT for the given user.
      */
     public String generateToken(User user) {
+        Integer homeCompanyId = user.getCompany() != null ? user.getCompany().getCompanyId() : null;
+        return generateToken(user, homeCompanyId, user.getSystemRole());
+    }
+
+    /**
+     * Issues a token scoped to a specific company and the caller's role there,
+     * rather than their home company/role from {@code users}. Used by
+     * {@code /auth/companies/{id}/switch} so a non-admin who belongs to
+     * multiple companies (via {@code company_members}) can act in whichever
+     * one this token names.
+     */
+    public String generateToken(User user, Integer companyId, String systemRole) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
                 .subject(String.valueOf(user.getUserId()))
                 .claim("email", user.getEmail())
-                .claim("companyId", user.getCompany() != null ? user.getCompany().getCompanyId() : null)
-                .claim("systemRole", user.getSystemRole())
+                .claim("companyId", companyId)
+                .claim("systemRole", systemRole)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(signingKey)

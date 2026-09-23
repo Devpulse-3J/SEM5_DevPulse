@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -64,5 +65,19 @@ public class AuthController {
             @AuthenticationPrincipal User user) {
         UserProfileResponse profile = authService.getUserProfile(user.getUserId());
         return ResponseEntity.ok(profile);
+    }
+
+    /**
+     * Issues a new token scoped to {@code companyId} instead of the caller's
+     * home company, provided they have a recorded {@code company_members} row
+     * there. Lets a non-admin who belongs to several companies act in
+     * whichever one they switch to; their home company is unaffected.
+     */
+    @PostMapping("/companies/{companyId}/switch")
+    public ResponseEntity<AuthResponse> switchCompany(
+            @AuthenticationPrincipal User user,
+            @PathVariable Integer companyId) {
+        AuthResponse response = authService.switchCompany(user.getUserId(), companyId);
+        return ResponseEntity.ok(response);
     }
 }

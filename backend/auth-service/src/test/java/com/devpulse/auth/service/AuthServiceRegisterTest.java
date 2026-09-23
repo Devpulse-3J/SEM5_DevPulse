@@ -3,11 +3,13 @@ package com.devpulse.auth.service;
 import com.devpulse.auth.dto.AuthResponse;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.entity.Company;
+import com.devpulse.auth.entity.CompanyMember;
 import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.DuplicateEmailException;
 import com.devpulse.auth.exception.ForbiddenException;
 import com.devpulse.auth.mapper.UserMapper;
+import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
@@ -33,6 +35,7 @@ public class AuthServiceRegisterTest {
     private UserRepository userRepository;
     private CompanyRepository companyRepository;
     private ProjectMemberRepository projectMemberRepository;
+    private CompanyMemberRepository companyMemberRepository;
     private PasswordEncoder passwordEncoder;
     private JwtService jwtService;
     private ProjectInvitationClaimService claimService;
@@ -45,13 +48,15 @@ public class AuthServiceRegisterTest {
         userRepository = mock(UserRepository.class);
         companyRepository = mock(CompanyRepository.class);
         projectMemberRepository = mock(ProjectMemberRepository.class);
+        companyMemberRepository = mock(CompanyMemberRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwtService = mock(JwtService.class);
         claimService = mock(ProjectInvitationClaimService.class);
         AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
 
         service = new AuthServiceImpl(userRepository, companyRepository, projectMemberRepository,
-                passwordEncoder, jwtService, authenticationManager, new UserMapper(), claimService);
+                companyMemberRepository, passwordEncoder, jwtService, authenticationManager,
+                new UserMapper(), claimService);
 
         invitingCompany = new Company();
         invitingCompany.setCompanyId(7);
@@ -61,6 +66,10 @@ public class AuthServiceRegisterTest {
         when(jwtService.generateToken(any())).thenReturn("jwt-token");
         when(jwtService.getExpirationSeconds()).thenReturn(3600L);
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(companyMemberRepository.findByUserIdAndCompanyId(anyInt(), anyInt()))
+                .thenReturn(Optional.empty());
+        when(companyMemberRepository.save(any(CompanyMember.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     private User placeholderFromInvite() {
@@ -178,6 +187,12 @@ public class AuthServiceRegisterTest {
         assertEquals("$2a$10$encoded", saved.getValue().getPasswordHash());
         // The membership and the used-up invitation are handled for the saved user.
         verify(claimService).complete(invitation, saved.getValue());
+
+        ArgumentCaptor<CompanyMember> membership = ArgumentCaptor.forClass(CompanyMember.class);
+        verify(companyMemberRepository).save(membership.capture());
+        assertEquals(55, membership.getValue().getUserId());
+        assertEquals(7, membership.getValue().getCompanyId());
+        assertEquals("member", membership.getValue().getRole());
     }
 
     @Test
@@ -242,5 +257,39 @@ public class AuthServiceRegisterTest {
 
         verify(claimService, never()).requirePendingInvitation(any(), any());
         verify(claimService, never()).complete(any(), any());
+    }
+
+    // -- company_members dual-write (additive, alongside users.company_id) ----
+
+    @Test
+    public void registeringAsACompanyCreatesItAndRecordsAnAdminCompanyMembership() {
+        when(companyRepository.save(any(Company.class))).thenAnswer(inv -> {
+            Company saved = inv.getArgument(0);
+            saved.setCompanyId(9);
+            return saved;
+        });
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User saved = inv.getArgument(0);
+            saved.setUserId(41);
+            return saved;
+        });
+
+        RegisterRequest request = registerRequest();
+        request.setIsCompany(true);
+        request.setCompanyName("New Co");
+        service.register(request);
+
+        ArgumentCaptor<CompanyMember> membership = ArgumentCaptor.forClass(CompanyMember.class);
+        verify(companyMemberRepository).save(membership.capture());
+        assertEquals(41, membership.getValue().getUserId());
+        assertEquals(9, membership.getValue().getCompanyId());
+        assertEquals("admin", membership.getValue().getRole());
+    }
+
+    @Test
+    public void individualSignupWithoutACompanyRecordsNoCompanyMembership() {
+        service.register(registerRequest());
+
+        verify(companyMemberRepository, never()).save(any(CompanyMember.class));
     }
 }
