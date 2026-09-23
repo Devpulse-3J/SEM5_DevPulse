@@ -11,6 +11,7 @@ import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.SystemRole;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.DuplicateEmailException;
+import com.devpulse.auth.exception.ForbiddenException;
 import com.devpulse.auth.exception.InvalidCredentialsException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
 import com.devpulse.auth.mapper.UserMapper;
@@ -237,5 +238,20 @@ public class AuthServiceImpl implements AuthService {
         List<ProjectMember> memberships = projectMemberRepository.findByUserId(userId);
 
         return userMapper.toUserProfileResponse(user, memberships);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AuthResponse switchCompany(Integer userId, Integer targetCompanyId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        CompanyMember membership = companyMemberRepository
+                .findByUserIdAndCompanyId(userId, targetCompanyId)
+                .orElseThrow(() -> new ForbiddenException("You are not a member of that company"));
+
+        String token = jwtService.generateToken(user, targetCompanyId, membership.getRole());
+        return userMapper.toAuthResponse(user, token, jwtService.getExpirationSeconds(),
+                targetCompanyId, membership.getRole());
     }
 }

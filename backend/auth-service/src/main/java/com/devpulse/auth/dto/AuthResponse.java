@@ -13,6 +13,7 @@ public class AuthResponse {
     private String email;
     private String fullName;
     private String systemRole;
+    private Integer companyId;
 
     // -- constructors --------------------------------------------------------
 
@@ -21,6 +22,16 @@ public class AuthResponse {
 
     public AuthResponse(String accessToken, long expiresIn, Integer userId,
                          String email, String fullName, String systemRole) {
+        this(accessToken, expiresIn, userId, email, fullName, systemRole, null);
+    }
+
+    /**
+     * @param companyId the company this token is scoped to — the caller's home
+     *                   company for login/register, or the target of a
+     *                   {@code /auth/companies/{id}/switch} call.
+     */
+    public AuthResponse(String accessToken, long expiresIn, Integer userId,
+                         String email, String fullName, String systemRole, Integer companyId) {
         this.accessToken = accessToken;
         this.tokenType = "Bearer";
         this.expiresIn = expiresIn;
@@ -28,6 +39,7 @@ public class AuthResponse {
         this.email = email;
         this.fullName = fullName;
         this.systemRole = systemRole;
+        this.companyId = companyId;
     }
 
     // -- getters / setters ---------------------------------------------------
@@ -86,5 +98,13 @@ public class AuthResponse {
 
     public void setSystemRole(String systemRole) {
         this.systemRole = systemRole;
+    }
+
+    public Integer getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(Integer companyId) {
+        this.companyId = companyId;
     }
 }

@@ -1,13 +1,16 @@
 package com.devpulse.auth.security;
 
+import com.devpulse.auth.entity.CompanyMember;
 import com.devpulse.auth.entity.Project;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ForbiddenException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
 import com.devpulse.auth.exception.UnauthorizedException;
+import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.ProjectRepository;
 import com.devpulse.auth.repository.UserRepository;
+import java.util.Optional;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -18,10 +21,13 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Two checks are always needed and are easy to conflate:
  * <ol>
- *   <li><b>Role</b> — is the caller an admin? Company-wide, from
- *       {@code users.system_role}.</li>
- *   <li><b>Tenancy</b> — does the target project belong to the caller's
- *       company?</li>
+ *   <li><b>Role</b> — is the caller an admin <em>in the company named by the
+ *       request</em>? Resolved from {@code company_members}, not
+ *       {@code users.system_role} — a user can be admin of at most one
+ *       company, so once they switch into another one (see
+ *       {@code /auth/companies/{id}/switch}) that admin status must not
+ *       follow them there.</li>
+ *   <li><b>Tenancy</b> — does the target project belong to that company?</li>
  * </ol>
  * Checking only the first is the bug the audit found in
  * {@code WorkspaceInviteServiceImpl.inviteToProject}: a company-A admin could
@@ -35,17 +41,26 @@ public class ProjectAccessService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final CompanyMemberRepository companyMemberRepository;
 
     public ProjectAccessService(UserRepository userRepository,
                                 ProjectRepository projectRepository,
-                                ProjectMemberRepository projectMemberRepository) {
+                                ProjectMemberRepository projectMemberRepository,
+                                CompanyMemberRepository companyMemberRepository) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
+        this.companyMemberRepository = companyMemberRepository;
     }
 
     /**
      * Loads the caller named by the gateway headers.
+     *
+     * <p>Membership in {@code context.companyId()} is resolved through
+     * {@code company_members}, not {@code users.company_id}: every existing
+     * user still has exactly one such row (backfilled from their home
+     * company), so this is unchanged for anyone who has never switched
+     * companies, while also honouring a token scoped to a second company.
      *
      * <p>Also cross-checks the header identity against the JWT principal Spring
      * Security already authenticated. They come from the same token via
@@ -58,8 +73,7 @@ public class ProjectAccessService {
                 .orElseThrow(() -> new UnauthorizedException(
                         "The authenticated user no longer exists"));
 
-        if (caller.getCompany() == null
-                || !caller.getCompany().getCompanyId().equals(context.companyId())) {
+        if (membershipIn(context).isEmpty()) {
             throw new UnauthorizedException(
                     "The authenticated user does not belong to the named company");
         }
@@ -73,11 +87,23 @@ public class ProjectAccessService {
         return caller;
     }
 
-    /** Company-scoped admin. Managers and developers never pass this. */
+    /** Is the caller an admin in {@code context.companyId()} specifically? */
+    private boolean isAdminIn(RequestContext context) {
+        return membershipIn(context)
+                .map(CompanyMember::getRole)
+                .map(ADMIN_ROLE::equalsIgnoreCase)
+                .orElse(false);
+    }
+
+    private Optional<CompanyMember> membershipIn(RequestContext context) {
+        return companyMemberRepository.findByUserIdAndCompanyId(context.userId(), context.companyId());
+    }
+
+    /** Admin in the company named by this request. Managers and developers never pass this. */
     @Transactional(readOnly = true)
     public User requireAdmin(RequestContext context) {
         User caller = requireCaller(context);
-        if (!ADMIN_ROLE.equalsIgnoreCase(caller.getSystemRole())) {
+        if (!isAdminIn(context)) {
             throw new ForbiddenException("Only company admins can perform this action");
         }
         return caller;
@@ -112,7 +138,7 @@ public class ProjectAccessService {
         User caller = requireCaller(context);
         Project project = requireProjectInCompany(context, projectId);
 
-        if (ADMIN_ROLE.equalsIgnoreCase(caller.getSystemRole())) {
+        if (isAdminIn(context)) {
             return project;
         }
         if (projectMemberRepository
