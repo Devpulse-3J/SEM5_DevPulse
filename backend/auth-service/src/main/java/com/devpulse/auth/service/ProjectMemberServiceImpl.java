@@ -5,12 +5,15 @@ import com.devpulse.auth.dto.ChangeMemberRoleRequest;
 import com.devpulse.auth.dto.InviteByEmailRequest;
 import com.devpulse.auth.dto.InviteResultResponse;
 import com.devpulse.auth.dto.ProjectMemberResponse;
+import com.devpulse.auth.entity.CompanyMember;
 import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.ProjectRole;
+import com.devpulse.auth.entity.SystemRole;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ConflictException;
 import com.devpulse.auth.exception.ResourceNotFoundException;
+import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.ProjectInvitationRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
 import com.devpulse.auth.repository.UserRepository;
@@ -44,6 +47,7 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     private final UserRepository userRepository;
     private final ProjectAccessService projectAccessService;
     private final ProjectInvitationRepository projectInvitationRepository;
+    private final CompanyMemberRepository companyMemberRepository;
     private final String frontendBaseUrl;
     private final JavaMailSender mailSender;
 
@@ -51,12 +55,14 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
                                     UserRepository userRepository,
                                     ProjectAccessService projectAccessService,
                                     ProjectInvitationRepository projectInvitationRepository,
+                                    CompanyMemberRepository companyMemberRepository,
                                     @Value("${devpulse.frontend.base-url:http://localhost:3000}") String frontendBaseUrl,
                                     @Autowired(required = false) JavaMailSender mailSender) {
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
         this.projectInvitationRepository = projectInvitationRepository;
+        this.companyMemberRepository = companyMemberRepository;
         this.frontendBaseUrl = frontendBaseUrl.replaceAll("/+$", "");
         this.mailSender = mailSender;
     }
@@ -164,14 +170,16 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         if (existing.isPresent()) {
             User target = existing.get();
 
-            // If individual user has no company yet, assign them to this company
+            // If individual user has no company yet, this becomes their home company
+            // (unchanged from before). A user who already has a home company
+            // elsewhere is no longer rejected: a non-admin may belong to many
+            // companies, so they just gain an additional company_members row for
+            // this workspace instead.
             if (target.getCompany() == null) {
                 target.setCompany(admin.getCompany());
                 userRepository.save(target);
-            } else if (!target.getCompany().getCompanyId().equals(context.companyId())) {
-                throw new ConflictException(
-                        "That email is already registered to a different company workspace");
             }
+            ensureCompanyMembership(target.getUserId(), context.companyId(), SystemRole.MEMBER);
 
             attachToProject(projectId, target, role);
             log.info("Admin {} invited user {} to project {} as {}",
@@ -253,6 +261,18 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         // reject a second row anyway.
         membership.setRole(role.toDbValue());
         projectMemberRepository.save(membership);
+    }
+
+    /**
+     * Records that {@code userId} can act in {@code companyId}, without
+     * disturbing an existing row. Always called with {@code SystemRole.MEMBER}
+     * from this class, so it can never collide with the one-admin-per-user
+     * partial unique index on {@code company_members}.
+     */
+    private void ensureCompanyMembership(Integer userId, Integer companyId, SystemRole role) {
+        companyMemberRepository.findByUserIdAndCompanyId(userId, companyId)
+                .orElseGet(() -> companyMemberRepository.save(
+                        new CompanyMember(userId, companyId, role.toDbValue())));
     }
 
     private User requireUserInCompany(Integer userId, Integer companyId) {
