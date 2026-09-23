@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 
 import pika
 
@@ -28,6 +29,13 @@ EXCHANGE = "devpulse.events"
 QUEUE = "analytics.pr_events"
 ROUTING_KEYS = ["pr.opened"]
 ALERT_ROUTING_KEY = "alert.pr_high_risk"
+
+# A background thread has no supervisor: an uncaught exception just ends it
+# silently (Python logs it via threading.excepthook and moves on), which is
+# how this consumer went permanently idle before - RabbitMQ not being ready
+# yet at process startup is routine and transient, not a reason to give up.
+RECONNECT_DELAY_SECONDS = 5
+MAX_RECONNECT_DELAY_SECONDS = 60
 
 # metrics-service writes the PR row from this same event, so it may not be
 # there on the first look.
@@ -110,19 +118,45 @@ def _on_message(channel, method, _properties, body) -> None:
         channel.basic_nack(method.delivery_tag, requeue=False)
 
 
-def consume_forever() -> None:
+def _connect_and_consume() -> None:
     settings = get_settings()
     connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
-    channel = connection.channel()
-    channel.exchange_declare(EXCHANGE, exchange_type="topic", durable=True)
-    channel.queue_declare(QUEUE, durable=True)
-    for key in ROUTING_KEYS:
-        channel.queue_bind(exchange=EXCHANGE, queue=QUEUE, routing_key=key)
+    try:
+        channel = connection.channel()
+        channel.exchange_declare(EXCHANGE, exchange_type="topic", durable=True)
+        channel.queue_declare(QUEUE, durable=True)
+        for key in ROUTING_KEYS:
+            channel.queue_bind(exchange=EXCHANGE, queue=QUEUE, routing_key=key)
 
-    channel.basic_qos(prefetch_count=10)
-    channel.basic_consume(QUEUE, _on_message)
-    log.info("Consuming %s from %s", ROUTING_KEYS, QUEUE)
-    channel.start_consuming()
+        channel.basic_qos(prefetch_count=10)
+        channel.basic_consume(QUEUE, _on_message)
+        log.info("Consuming %s from %s", ROUTING_KEYS, QUEUE)
+        channel.start_consuming()
+    finally:
+        if connection.is_open:
+            connection.close()
+
+
+def consume_forever() -> None:
+    """Connects and consumes, reconnecting with capped exponential backoff on
+    any failure - at startup (RabbitMQ not up yet) or mid-run (a dropped
+    connection). Never returns; only stops when the process does.
+    """
+    delay = RECONNECT_DELAY_SECONDS
+    while True:
+        try:
+            _connect_and_consume()
+        except Exception:
+            log.exception(
+                "pr-events consumer lost its connection; retrying in %ss", delay
+            )
+            time.sleep(delay)
+            delay = min(delay * 2, MAX_RECONNECT_DELAY_SECONDS)
+        else:
+            # start_consuming() returned normally (e.g. channel.stop_consuming()
+            # was called) rather than raising - treat that as a clean stop too,
+            # since nothing in this codebase calls stop_consuming() today.
+            delay = RECONNECT_DELAY_SECONDS
 
 
 def start_background_consumer() -> threading.Thread:
