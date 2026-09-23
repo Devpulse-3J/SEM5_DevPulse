@@ -1,6 +1,7 @@
 package com.devpulse.metrics.controller;
 
 import com.devpulse.metrics.dto.DeploymentResponse;
+import com.devpulse.metrics.dto.DevExSummaryResponse;
 import com.devpulse.metrics.dto.DoraSummaryResponse;
 import com.devpulse.metrics.dto.PullRequestResponse;
 import com.devpulse.metrics.dto.ReviewVelocitySummaryResponse;
@@ -89,6 +90,15 @@ public class MetricsController {
             @RequestParam @Positive Integer projectId,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int windowDays) {
         return activityMetricsService.getReviewVelocity(
+                contextResolver.resolve(request), projectId, windowDays);
+    }
+
+    @GetMapping("/devex")
+    public DevExSummaryResponse devex(
+            HttpServletRequest request,
+            @RequestParam @Positive Integer projectId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int windowDays) {
+        return activityMetricsService.getDevExSummary(
                 contextResolver.resolve(request), projectId, windowDays);
     }
 }
