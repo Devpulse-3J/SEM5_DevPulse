@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -253,6 +254,61 @@ public class ActivityQueryRepository {
                         rs.getInt("review_count"),
                         instant(rs, "min_reviewed_at"),
                         instant(rs, "max_reviewed_at")));
+    }
+
+    public Map<Integer, Long> countCompletedReviewsByUser(
+            Integer companyId, Integer projectId, Instant windowStart) {
+        String sql = """
+                SELECT rv.reviewer_id, COUNT(rv.review_id) AS review_count
+                FROM pr_reviews rv
+                JOIN pull_requests pr ON pr.pr_id = rv.pr_id AND pr.company_id = rv.company_id
+                JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                WHERE rv.company_id = :companyId AND r.project_id = :projectId
+                  AND rv.reviewed_at >= :windowStart
+                  AND rv.reviewer_id IS NOT NULL
+                GROUP BY rv.reviewer_id
+                """;
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("companyId", companyId)
+                .addValue("projectId", projectId)
+                .addValue("windowStart", Timestamp.from(windowStart));
+        Map<Integer, Long> map = new HashMap<>();
+        jdbcTemplate.query(sql, parameters, rs -> {
+            map.put(rs.getInt("reviewer_id"), rs.getLong("review_count"));
+        });
+        return map;
+    }
+
+    public Map<Integer, Long> countActiveRepositoriesByUser(
+            Integer companyId, Integer projectId, Instant windowStart) {
+        String sql = """
+                SELECT author_id AS user_id, COUNT(DISTINCT repo_id) AS repo_count FROM (
+                    SELECT pr.author_id, pr.repo_id
+                    FROM pull_requests pr
+                    JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                    WHERE pr.company_id = :companyId AND r.project_id = :projectId
+                      AND (pr.state = 'open' OR pr.created_at >= :windowStart)
+                      AND pr.author_id IS NOT NULL
+                    UNION
+                    SELECT rv.reviewer_id AS author_id, pr.repo_id
+                    FROM pr_reviews rv
+                    JOIN pull_requests pr ON pr.pr_id = rv.pr_id AND pr.company_id = rv.company_id
+                    JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                    WHERE rv.company_id = :companyId AND r.project_id = :projectId
+                      AND rv.reviewed_at >= :windowStart
+                      AND rv.reviewer_id IS NOT NULL
+                ) activity
+                GROUP BY author_id
+                """;
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("companyId", companyId)
+                .addValue("projectId", projectId)
+                .addValue("windowStart", Timestamp.from(windowStart));
+        Map<Integer, Long> map = new HashMap<>();
+        jdbcTemplate.query(sql, parameters, rs -> {
+            map.put(rs.getInt("user_id"), rs.getLong("repo_count"));
+        });
+        return map;
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
