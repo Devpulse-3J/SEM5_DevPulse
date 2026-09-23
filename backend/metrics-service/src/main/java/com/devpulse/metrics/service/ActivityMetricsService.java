@@ -1,6 +1,7 @@
 package com.devpulse.metrics.service;
 
 import com.devpulse.metrics.dto.DeploymentResponse;
+import com.devpulse.metrics.dto.DevExSummaryResponse;
 import com.devpulse.metrics.dto.PullRequestResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.CheckResponse;
 import com.devpulse.metrics.dto.PullRequestResponse.ReviewResponse;
@@ -171,13 +172,20 @@ public class ActivityMetricsService {
     public List<WorkloadEntryResponse> getWorkload(
             RequestContext context, Integer projectId, int windowDays) {
         accessService.requireViewAccess(context, projectId);
+        java.time.Instant windowStart = clock.instant().minus(windowDays, ChronoUnit.DAYS);
         var members = queryRepository.findProjectMembers(context.companyId(), projectId);
         Map<Integer, List<PullRequestCycleFact>> factsByAuthor = queryRepository
                 .findPullRequestCycleFacts(
-                        context.companyId(), projectId, clock.instant().minus(windowDays, ChronoUnit.DAYS))
+                        context.companyId(), projectId, windowStart)
                 .stream()
                 .filter(fact -> fact.authorId() != null)
                 .collect(Collectors.groupingBy(PullRequestCycleFact::authorId));
+
+        Map<Integer, Long> reviewsByUser = queryRepository.countCompletedReviewsByUser(
+                context.companyId(), projectId, windowStart);
+        Map<Integer, Long> reposByUser = queryRepository.countActiveRepositoriesByUser(
+                context.companyId(), projectId, windowStart);
+
         return members.stream().map(member -> {
             List<PullRequestCycleFact> facts = factsByAuthor.getOrDefault(member.userId(), List.of());
             long activePrs = facts.stream().filter(fact -> "open".equals(fact.state())).count();
@@ -192,9 +200,93 @@ public class ActivityMetricsService {
             BigDecimal cycleTime = cycleTimes.isEmpty() ? null : cycleTimes.stream()
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     .divide(BigDecimal.valueOf(cycleTimes.size()), 2, RoundingMode.HALF_UP);
+
+            long completedReviews = reviewsByUser.getOrDefault(member.userId(), 0L);
+            long activeRepos = reposByUser.getOrDefault(member.userId(), activePrs > 0 ? 1L : 0L);
+
+            long totalPrsTouched = facts.size();
+            BigDecimal reviewBurden = BigDecimal.valueOf(completedReviews)
+                    .divide(BigDecimal.valueOf(Math.max(1L, totalPrsTouched)), 2, RoundingMode.HALF_UP);
+
+            // Context Switching Index: 0.0 - 10.0 scale
+            double rawCsi = (activeRepos * 1.5) + (activePrs * 0.8) + (completedReviews * 0.15);
+            BigDecimal csi = BigDecimal.valueOf(Math.min(10.0, Math.max(0.0, rawCsi))).setScale(2, RoundingMode.HALF_UP);
+
+            // Workload Balance Status
+            String workloadStatus;
+            if (loadPct.compareTo(BigDecimal.valueOf(150.0)) > 0 || csi.compareTo(BigDecimal.valueOf(7.5)) >= 0) {
+                workloadStatus = "OVERLOADED";
+            } else if (loadPct.compareTo(BigDecimal.valueOf(40.0)) < 0 && completedReviews == 0) {
+                workloadStatus = "UNDERUTILIZED";
+            } else {
+                workloadStatus = "OPTIMAL";
+            }
+
+            // DevEx Score (0 - 100)
+            double loadPenalty = Math.min(40.0, Math.abs(loadPct.doubleValue() - 100.0) * 0.3);
+            double csiPenalty = csi.doubleValue() * 3.5;
+            double score = Math.max(10.0, Math.min(100.0, 100.0 - loadPenalty - csiPenalty));
+            BigDecimal devexScore = BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP);
+
             return new WorkloadEntryResponse(
-                    member.userId().toString(), member.name(), activePrs, loadPct, cycleTime);
+                    member.userId().toString(),
+                    member.name(),
+                    activePrs,
+                    loadPct,
+                    cycleTime,
+                    completedReviews,
+                    activeRepos,
+                    csi,
+                    reviewBurden,
+                    workloadStatus,
+                    devexScore);
         }).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public DevExSummaryResponse getDevExSummary(
+            RequestContext context, Integer projectId, int windowDays) {
+        accessService.requireViewAccess(context, projectId);
+        java.time.Instant now = clock.instant();
+        List<WorkloadEntryResponse> workload = getWorkload(context, projectId, windowDays);
+
+        long optimalCount = workload.stream().filter(w -> "OPTIMAL".equals(w.workloadStatus())).count();
+        long overloadedCount = workload.stream().filter(w -> "OVERLOADED".equals(w.workloadStatus())).count();
+        long underutilizedCount = workload.stream().filter(w -> "UNDERUTILIZED".equals(w.workloadStatus())).count();
+
+        List<BigDecimal> devexScores = workload.stream().map(WorkloadEntryResponse::devexScore).filter(s -> s != null).toList();
+        BigDecimal overallDevExScore = average(devexScores);
+        if (overallDevExScore == null) {
+            overallDevExScore = BigDecimal.valueOf(100.0).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        List<BigDecimal> csiList = workload.stream().map(WorkloadEntryResponse::contextSwitchingIndex).filter(s -> s != null).toList();
+        BigDecimal avgCsi = average(csiList);
+
+        List<BigDecimal> reviewBurdens = workload.stream().map(WorkloadEntryResponse::reviewBurdenRatio).filter(s -> s != null).toList();
+        BigDecimal teamReviewBurden = average(reviewBurdens);
+
+        String health;
+        if (overallDevExScore.compareTo(BigDecimal.valueOf(80.0)) >= 0 && overloadedCount == 0) {
+            health = "HEALTHY";
+        } else if (overloadedCount > workload.size() / 3) {
+            health = "BURNOUT_RISK";
+        } else {
+            health = "MODERATE";
+        }
+
+        return new DevExSummaryResponse(
+                projectId.toString(),
+                windowDays,
+                now,
+                overallDevExScore,
+                health,
+                avgCsi,
+                teamReviewBurden,
+                optimalCount,
+                overloadedCount,
+                underutilizedCount,
+                workload);
     }
 
     @Transactional(readOnly = true)
