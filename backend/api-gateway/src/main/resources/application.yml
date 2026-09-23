@@ -80,7 +80,8 @@ spring:
             allowed-origins:
               - "http://localhost:3000"
               - "http://10.10.20.92:3000"
-              - "http://odineye.cse23.org/"
+              - "http://odineye.cse23.org"
+              - "https://odineye.cse23.org"
             
             allowed-methods:
               - GET
