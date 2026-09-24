@@ -246,7 +246,6 @@ public class ActivityMetricsService {
     @Transactional(readOnly = true)
     public DevExSummaryResponse getDevExSummary(
             RequestContext context, Integer projectId, int windowDays) {
-        accessService.requireViewAccess(context, projectId);
         java.time.Instant now = clock.instant();
         List<WorkloadEntryResponse> workload = getWorkload(context, projectId, windowDays);
 
