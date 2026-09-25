@@ -96,6 +96,33 @@ public class DoraMetricsService {
                 calculatedAt, windowDays, responses);
     }
 
+    /**
+     * Recalculates the stored daily snapshots for the last {@code days} days, so the
+     * history reflects the data as it is now.
+     *
+     * <p>Snapshots are written once a night and never revisited, so a fix to the
+     * underlying data (for example correcting commit times) leaves every earlier
+     * day showing what was calculated back then. Each past day is recomputed as of
+     * 00:05 - the moment the nightly job captures it - using only deployments that
+     * existed by then. Today is skipped: its point is always calculated live.
+     * Idempotent: each day's snapshot is upserted.
+     *
+     * @return how many daily snapshots were written
+     */
+    @Transactional
+    public int rebuildHistory(RequestContext context, Integer projectId, int days, int windowDays) {
+        ProjectScope project = projectAccessService.requireAdminAccess(context, projectId);
+        LocalDate today = LocalDate.now(clock);
+        int rebuilt = 0;
+        for (int daysBack = days; daysBack >= 1; daysBack--) {
+            Instant calculatedAt = today.minusDays(daysBack)
+                    .atStartOfDay(clock.getZone()).plusMinutes(5).toInstant();
+            calculateAndStore(project, calculatedAt, windowDays);
+            rebuilt++;
+        }
+        return rebuilt;
+    }
+
     @Transactional
     public void calculateAndStore(ProjectScope project, Instant calculatedAt, int windowDays) {
         Calculation calculation = calculate(

@@ -3,6 +3,7 @@ package com.devpulse.metrics.controller;
 import com.devpulse.metrics.dto.DeploymentResponse;
 import com.devpulse.metrics.dto.DoraSummaryResponse;
 import com.devpulse.metrics.dto.PullRequestResponse;
+import com.devpulse.metrics.dto.RebuildSnapshotsResponse;
 import com.devpulse.metrics.dto.WorkloadEntryResponse;
 import com.devpulse.metrics.security.RequestContext;
 import com.devpulse.metrics.security.RequestContextResolver;
@@ -15,6 +16,7 @@ import jakarta.validation.constraints.Positive;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +47,21 @@ public class MetricsController {
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int historyDays) {
         RequestContext context = contextResolver.resolve(request);
         return doraMetricsService.getSummary(context, projectId, windowDays, historyDays);
+    }
+
+    /**
+     * Admin-only: recalculates the last {@code days} daily DORA snapshots for a
+     * project from the data as it is now. See {@link DoraMetricsService#rebuildHistory}.
+     */
+    @PostMapping("/dora/snapshots/rebuild")
+    public RebuildSnapshotsResponse rebuildSnapshots(
+            HttpServletRequest request,
+            @RequestParam @Positive Integer projectId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(90) int days,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int windowDays) {
+        RequestContext context = contextResolver.resolve(request);
+        return new RebuildSnapshotsResponse(
+                doraMetricsService.rebuildHistory(context, projectId, days, windowDays));
     }
 
     @GetMapping("/prs")
