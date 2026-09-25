@@ -23,4 +23,7 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     Optional<User> findByEmailIgnoreCase(String email);
 
     boolean existsByEmail(String email);
+
+    /** The user (if any) that has this GitHub account linked. Not unique in the schema, so first match. */
+    Optional<User> findFirstByGithubId(Long githubId);
 }

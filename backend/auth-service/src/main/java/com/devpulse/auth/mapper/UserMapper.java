@@ -73,6 +73,7 @@ public class UserMapper {
         profile.setCompanyName(activeCompany != null ? activeCompany.getCompanyName() : null);
         profile.setProjectRoles(projectRoles);
         profile.setCompanies(companies);
+        profile.setGithubId(user.getGithubId());
 
         return profile;
     }
