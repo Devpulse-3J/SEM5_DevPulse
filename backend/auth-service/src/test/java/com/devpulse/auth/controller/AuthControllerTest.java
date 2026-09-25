@@ -175,4 +175,29 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.email").value("dev@demo.devpulse"))
                 .andExpect(jsonPath("$.systemRole").value("member"));
     }
+
+    @Test
+    void meScopesTheProfileToTheCompanyNamedByTheGatewayHeader() throws Exception {
+        UserProfileResponse profile = new UserProfileResponse();
+        profile.setUserId(1);
+        profile.setEmail("dev@demo.devpulse");
+        profile.setCompanyId(15);
+        profile.setSystemRole("member");
+        when(authService.getUserProfile(1, 15)).thenReturn(profile);
+
+        mockMvc.perform(get("/auth/me").with(user(principal())).header("X-Company-Id", "15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companyId").value(15));
+    }
+
+    @Test
+    void meIgnoresAMalformedCompanyHeaderInsteadOfFailing() throws Exception {
+        UserProfileResponse profile = new UserProfileResponse();
+        profile.setUserId(1);
+        profile.setEmail("dev@demo.devpulse");
+        when(authService.getUserProfile(anyInt())).thenReturn(profile);
+
+        mockMvc.perform(get("/auth/me").with(user(principal())).header("X-Company-Id", "not-a-number"))
+                .andExpect(status().isOk());
+    }
 }

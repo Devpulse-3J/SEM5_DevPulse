@@ -12,6 +12,7 @@ import com.devpulse.auth.mapper.UserMapper;
 import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
+import com.devpulse.auth.repository.ProjectRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,8 +56,8 @@ public class AuthServiceRegisterTest {
         AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
 
         service = new AuthServiceImpl(userRepository, companyRepository, projectMemberRepository,
-                companyMemberRepository, passwordEncoder, jwtService, authenticationManager,
-                new UserMapper(), claimService);
+                companyMemberRepository, mock(ProjectRepository.class), passwordEncoder, jwtService,
+                authenticationManager, new UserMapper(), claimService);
 
         invitingCompany = new Company();
         invitingCompany.setCompanyId(7);

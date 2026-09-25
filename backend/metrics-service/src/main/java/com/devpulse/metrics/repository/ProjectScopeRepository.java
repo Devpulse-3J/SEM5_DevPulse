@@ -29,10 +29,21 @@ public class ProjectScopeRepository {
         return rows.stream().findFirst();
     }
 
+    /**
+     * The caller's role in {@code companyId} - not necessarily their home company.
+     * A user can belong to several companies (company_members), so the role is
+     * resolved for the company the request is scoped to; the legacy
+     * users.company_id/system_role row is only a fallback for accounts that
+     * predate company_members.
+     */
     public Optional<String> findSystemRole(Integer companyId, Integer userId) {
         return jdbcTemplate.query("""
-                SELECT system_role FROM users WHERE company_id = ? AND user_id = ?
-                """, (rs, rowNum) -> rs.getString("system_role"), companyId, userId)
+                SELECT role FROM (
+                    SELECT role, 0 AS priority FROM company_members WHERE company_id = ? AND user_id = ?
+                    UNION ALL
+                    SELECT system_role AS role, 1 AS priority FROM users WHERE company_id = ? AND user_id = ?
+                ) r ORDER BY priority LIMIT 1
+                """, (rs, rowNum) -> rs.getString("role"), companyId, userId, companyId, userId)
                 .stream().findFirst();
     }
 
