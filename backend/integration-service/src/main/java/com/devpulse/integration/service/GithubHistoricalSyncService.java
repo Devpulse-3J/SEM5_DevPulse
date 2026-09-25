@@ -104,7 +104,7 @@ public class GithubHistoricalSyncService {
                     Integer prId = prNode.path("id").asInt(1);
                     Integer prNumber = prNode.path("number").asInt(1);
                     String title = prNode.path("title").asText("Historical PR");
-                    Integer authorId = prNode.path("user").path("id").asInt(1);
+                    Integer authorId = EventJson.optionalInt(prNode.path("user").path("id"));
                     String baseRef = prNode.path("base").path("ref").asText(defaultBranch);
                     boolean isDraft = prNode.path("draft").asBoolean(false);
                     int additions = prNode.path("additions").asInt(0);
@@ -162,12 +162,16 @@ public class GithubHistoricalSyncService {
 
                     String commitSha = commitNode.path("sha").asText(UUID.randomUUID().toString());
                     String commitMessage = commitNode.path("commit").path("message").asText("Historical Commit");
-                    Integer authorId = commitNode.path("author").path("id").asInt(1);
+                    Integer authorId = EventJson.optionalInt(commitNode.path("author").path("id"));
+                    // The commit's real date from GitHub, not the moment this sync ran.
+                    Instant committedAt = EventJson.firstInstant(Instant.now(),
+                            commitNode.path("commit").path("committer").path("date"),
+                            commitNode.path("commit").path("author").path("date"));
 
                     CommitPushedEvent commitEvent = new CommitPushedEvent(
                             UUID.randomUUID().toString(), companyId, projectId, Instant.now(),
                             commitSha, repoEntity.getRepoId(), null, authorId,
-                            commitMessage, Instant.now(), 0, 0
+                            commitMessage, committedAt, 0, 0
                     );
                     eventPublisherService.publishEvent(commitEvent);
                     commitsSynced++;

@@ -261,4 +261,31 @@ class WebhookEventNormalizerTest {
 
         assertNull(event.getAssigneeId());
     }
+
+    // -- a pushed commit carries its own timestamp, not "when we processed it" --
+
+    private static String push(String headCommitExtra) {
+        return "{\"head_commit\":{\"id\":\"abc123\",\"message\":\"m\"" + headCommitExtra + "},"
+                + "\"repository\":{\"id\":77},\"sender\":{\"id\":42}}";
+    }
+
+    @Test
+    void aPushedCommitKeepsTheTimestampGithubSentIncludingItsOffset() {
+        CommitPushedEvent event = (CommitPushedEvent) normalizer.normalize(
+                "github", "push", 1, push(",\"timestamp\":\"2026-09-25T15:03:36+05:30\""));
+
+        assertEquals(java.time.Instant.parse("2026-09-25T09:33:36Z"), event.getCommitTime());
+    }
+
+    @Test
+    void aPushWithNoOrUnreadableTimestampFallsBackToNowInsteadOfFailing() {
+        java.time.Instant before = java.time.Instant.now();
+
+        CommitPushedEvent missing = (CommitPushedEvent) normalizer.normalize("github", "push", 1, push(""));
+        CommitPushedEvent garbage = (CommitPushedEvent) normalizer.normalize(
+                "github", "push", 1, push(",\"timestamp\":\"not a date\""));
+
+        assertFalse(missing.getCommitTime().isBefore(before));
+        assertFalse(garbage.getCommitTime().isBefore(before));
+    }
 }
