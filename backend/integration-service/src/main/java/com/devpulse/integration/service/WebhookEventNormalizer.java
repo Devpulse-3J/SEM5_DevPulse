@@ -65,7 +65,7 @@ public class WebhookEventNormalizer {
                         repoId,
                         prNode.path("number").asInt(1),
                         prNode.path("title").asText("PR Title"),
-                        optionalInt(prNode.path("user").path("id")),
+                        EventJson.optionalInt(prNode.path("user").path("id")),
                         prNode.path("base").path("ref").asText("main"),
                         prNode.path("draft").asBoolean(false),
                         prNode.path("additions").asInt(0),
@@ -93,12 +93,14 @@ public class WebhookEventNormalizer {
             String commitSha = headCommit.path("id").asText(root.path("after").asText(UUID.randomUUID().toString()));
             Integer repoId = root.path("repository").path("id").asInt(1);
             String message = headCommit.path("message").asText("Pushed commit");
-            Integer authorId = optionalInt(root.path("sender").path("id"));
+            Integer authorId = EventJson.optionalInt(root.path("sender").path("id"));
+            // The commit's own timestamp, not the moment this webhook was processed.
+            Instant commitTime = EventJson.firstInstant(now, headCommit.path("timestamp"));
 
             CommitPushedEvent commitEvent = new CommitPushedEvent(
                     eventId, companyId, projectId, now,
                     commitSha, repoId, null, authorId,
-                    message, now, 0, 0
+                    message, commitTime, 0, 0
             );
             String authorEmail = headCommit.path("author").path("email").asText(null);
             if (authorEmail == null || authorEmail.isBlank()) {
@@ -229,7 +231,7 @@ public class WebhookEventNormalizer {
         String priority = fields.path("priority").path("name").asText("Medium");
         String status = fields.path("status").path("name").asText("In Progress");
         Integer storyPoints = fields.path("customfield_10016").asInt(fields.path("storyPoints").asInt(0));
-        Integer assigneeId = optionalInt(fields.path("assignee").path("id"));
+        Integer assigneeId = EventJson.optionalInt(fields.path("assignee").path("id"));
 
         return new IssueUpdatedEvent(
                 eventId, companyId, projectId, now,
@@ -238,18 +240,4 @@ public class WebhookEventNormalizer {
         );
     }
 
-    /**
-     * The node's value as an Integer, or null when it is missing, null, not a number
-     * or too large for an int.
-     *
-     * <p>Used for the ids that identify a PERSON (PR author, pusher, Jira assignee).
-     * These used to default to 1 via {@code asInt(1)}, and downstream that 1 was
-     * looked up as a DevPulse user id - so a payload without the id silently
-     * attributed the work to whichever user is number 1 in the company. Jira's
-     * assignee id is a string account id, so it was always 1 whenever someone was
-     * assigned. Null means "author unknown" and is treated as unattributed.
-     */
-    private static Integer optionalInt(JsonNode node) {
-        return node != null && node.isNumber() && node.canConvertToInt() ? node.intValue() : null;
-    }
 }
