@@ -29,7 +29,7 @@ public class ActivityQueryRepository {
                        pr.url, pr.created_at, pr.updated_at, pr.merged_at
                 FROM pull_requests pr
                 JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
-                LEFT JOIN users u ON u.user_id = pr.author_id AND u.company_id = pr.company_id
+                LEFT JOIN users u ON u.user_id = pr.author_id AND (u.company_id = pr.company_id OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = pr.company_id))
                 WHERE pr.company_id = :companyId
                 """);
         MapSqlParameterSource parameters = new MapSqlParameterSource()
@@ -77,7 +77,7 @@ public class ActivityQueryRepository {
                 SELECT rv.review_id, rv.pr_id, rv.review_state, rv.reviewed_at,
                        u.full_name AS reviewer_name, u.avatar_url AS reviewer_avatar
                 FROM pr_reviews rv
-                LEFT JOIN users u ON u.user_id = rv.reviewer_id AND u.company_id = rv.company_id
+                LEFT JOIN users u ON u.user_id = rv.reviewer_id AND (u.company_id = rv.company_id OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = rv.company_id))
                 WHERE rv.pr_id IN (:prIds)
                 ORDER BY rv.reviewed_at
                 """, Map.of("prIds", prIds), (rs, rowNum) -> new ReviewRow(
@@ -150,7 +150,7 @@ public class ActivityQueryRepository {
                        c.commit_time
                 FROM deployments d
                 LEFT JOIN users u
-                  ON u.user_id = d.triggered_by_user_id AND u.company_id = d.company_id
+                  ON u.user_id = d.triggered_by_user_id AND (u.company_id = d.company_id OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = d.company_id))
                 LEFT JOIN commits c
                   ON c.commit_sha = d.commit_sha AND c.company_id = d.company_id
                 WHERE d.company_id = :companyId AND d.project_id = :projectId
@@ -187,7 +187,7 @@ public class ActivityQueryRepository {
                 SELECT u.user_id, u.full_name
                 FROM project_members pm
                 JOIN users u ON u.user_id = pm.user_id
-                WHERE pm.project_id = :projectId AND u.company_id = :companyId
+                WHERE pm.project_id = :projectId AND (u.company_id = :companyId OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = :companyId))
                 ORDER BY u.full_name
                 """, Map.of("companyId", companyId, "projectId", projectId),
                 (rs, rowNum) -> new MemberRow(rs.getInt("user_id"), rs.getString("full_name")));
