@@ -51,4 +51,36 @@ class ProjectAccessServiceTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("not a member");
     }
+
+    @Test
+    void companyAdminPassesTheAdminCheck() {
+        RequestContext context = new RequestContext(3, 2);
+        ProjectScope scope = new ProjectScope(8, 2, "payments", 1);
+        when(repository.findProject(2, 8)).thenReturn(Optional.of(scope));
+        when(repository.findSystemRole(2, 3)).thenReturn(Optional.of("admin"));
+
+        assertThat(service.requireAdminAccess(context, 8)).isEqualTo(scope);
+    }
+
+    @Test
+    void aMemberIsRefusedTheAdminCheckEvenOnTheirOwnProject() {
+        RequestContext context = new RequestContext(3, 2);
+        when(repository.findProject(2, 8))
+                .thenReturn(Optional.of(new ProjectScope(8, 2, "payments", 1)));
+        when(repository.findSystemRole(2, 3)).thenReturn(Optional.of("member"));
+
+        assertThatThrownBy(() -> service.requireAdminAccess(context, 8))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Only company admins");
+    }
+
+    @Test
+    void theAdminCheckDoesNotRevealAProjectInAnotherCompany() {
+        RequestContext context = new RequestContext(3, 2);
+        when(repository.findProject(2, 99)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.requireAdminAccess(context, 99))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("No project");
+    }
 }
