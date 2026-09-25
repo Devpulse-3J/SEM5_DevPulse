@@ -103,4 +103,51 @@ public class GithubIdentityServiceTest {
         assertThrows(ExternalServiceException.class, () -> service.link(24, "anyone"));
         verify(userRepository, never()).save(any(User.class));
     }
+
+    // -- preview: show who a username is, save nothing -------------------------
+
+    @Test
+    public void previewShowsWhoTheUsernameIsWithoutSavingAnything() {
+        when(lookup.findByUsername("ChanulPathirana")).thenReturn(Optional.of(new GithubUserLookup.GithubAccount(
+                149255216L, "ChanulPathirana", "Pathirana D.P.C.N.",
+                "https://avatars.githubusercontent.com/u/149255216", "https://github.com/ChanulPathirana")));
+
+        var preview = service.preview(24, " ChanulPathirana ");
+
+        assertEquals(149255216L, preview.getGithubId());
+        assertEquals("ChanulPathirana", preview.getGithubLogin());
+        assertEquals("Pathirana D.P.C.N.", preview.getName());
+        assertEquals("https://github.com/ChanulPathirana", preview.getProfileUrl());
+        assertFalse(preview.isLinkedToAnotherUser());
+        verify(userRepository, never()).save(any(User.class));
+        assertNull(user.getGithubId());
+    }
+
+    @Test
+    public void previewFlagsAnAccountThatAnotherUserAlreadyHas() {
+        User owner = new User();
+        owner.setUserId(99);
+        when(lookup.findByUsername("taken"))
+                .thenReturn(Optional.of(new GithubUserLookup.GithubAccount(555L, "taken")));
+        when(userRepository.findFirstByGithubId(555L)).thenReturn(Optional.of(owner));
+
+        assertTrue(service.preview(24, "taken").isLinkedToAnotherUser());
+    }
+
+    @Test
+    public void previewDoesNotFlagTheCallersOwnAccountAsTaken() {
+        user.setGithubId(555L);
+        when(lookup.findByUsername("mine"))
+                .thenReturn(Optional.of(new GithubUserLookup.GithubAccount(555L, "mine")));
+        when(userRepository.findFirstByGithubId(555L)).thenReturn(Optional.of(user));
+
+        assertFalse(service.preview(24, "mine").isLinkedToAnotherUser());
+    }
+
+    @Test
+    public void previewOfAnUnknownUsernameIsNotFound() {
+        when(lookup.findByUsername("nobody-here")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.preview(24, "nobody-here"));
+    }
 }

@@ -1,6 +1,7 @@
 package com.devpulse.auth.service;
 
 import com.devpulse.auth.exception.ExternalServiceException;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.Duration;
 import java.util.Optional;
 import org.springframework.http.HttpStatusCode;
@@ -42,7 +43,8 @@ public class GithubApiUserLookup implements GithubUserLookup {
             if (user == null || user.id() == null || user.login() == null) {
                 return Optional.empty();
             }
-            return Optional.of(new GithubAccount(user.id(), user.login()));
+            return Optional.of(new GithubAccount(
+                    user.id(), user.login(), user.name(), user.avatar_url(), user.html_url()));
         } catch (HttpClientErrorException.NotFound e) {
             return Optional.empty();
         } catch (HttpClientErrorException e) {
@@ -54,6 +56,7 @@ public class GithubApiUserLookup implements GithubUserLookup {
         }
     }
 
-    private record GithubUser(Long id, String login) {
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GithubUser(Long id, String login, String name, String avatar_url, String html_url) {
     }
 }
