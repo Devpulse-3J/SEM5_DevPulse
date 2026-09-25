@@ -1,12 +1,15 @@
 package com.devpulse.auth.controller;
 
 import com.devpulse.auth.dto.AuthResponse;
+import com.devpulse.auth.dto.GithubPreviewResponse;
+import com.devpulse.auth.dto.LinkGithubResponse;
 import com.devpulse.auth.dto.LoginRequest;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.dto.UserProfileResponse;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.DuplicateEmailException;
 import com.devpulse.auth.service.AuthService;
+import com.devpulse.auth.service.GithubIdentityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +27,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +54,9 @@ class AuthControllerTest {
 
     @MockBean
     private AuthService authService;
+
+    @MockBean
+    private GithubIdentityService githubIdentityService;
 
     private static AuthResponse sampleAuth() {
         return new AuthResponse("test.jwt.token", 3600L, 1,
@@ -199,5 +206,61 @@ class AuthControllerTest {
 
         mockMvc.perform(get("/auth/me").with(user(principal())).header("X-Company-Id", "not-a-number"))
                 .andExpect(status().isOk());
+    }
+
+    // ---- /auth/me/github (link the caller's GitHub account) ------------------
+
+    @Test
+    void linkGithubReturnsTheLinkedAccount() throws Exception {
+        when(githubIdentityService.link(1, "UmayaJayasuriya"))
+                .thenReturn(new LinkGithubResponse(194699006L, "UmayaJayasuriya"));
+
+        mockMvc.perform(put("/auth/me/github").with(user(principal()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"githubUsername\":\"UmayaJayasuriya\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.githubId").value(194699006))
+                .andExpect(jsonPath("$.githubLogin").value("UmayaJayasuriya"));
+    }
+
+    @Test
+    void linkGithubRejectsAnInvalidUsernameBeforeAnyLookup() throws Exception {
+        mockMvc.perform(put("/auth/me/github").with(user(principal()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"githubUsername\":\"-bad name!\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void linkGithubRequiresAuthentication() throws Exception {
+        mockMvc.perform(put("/auth/me/github")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"githubUsername\":\"octocat\"}"))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void githubLookupShowsTheAccountForConfirmation() throws Exception {
+        when(githubIdentityService.preview(1, "ChanulPathirana")).thenReturn(new GithubPreviewResponse(
+                149255216L, "ChanulPathirana", "Pathirana D.P.C.N.",
+                "https://avatars.githubusercontent.com/u/149255216", "https://github.com/ChanulPathirana", false));
+
+        mockMvc.perform(get("/auth/me/github/lookup").param("username", "ChanulPathirana").with(user(principal())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.githubId").value(149255216))
+                .andExpect(jsonPath("$.name").value("Pathirana D.P.C.N."))
+                .andExpect(jsonPath("$.linkedToAnotherUser").value(false));
+    }
+
+    @Test
+    void githubLookupOfAnInvalidUsernameIsA400NotA500() throws Exception {
+        mockMvc.perform(get("/auth/me/github/lookup").param("username", "-bad name!").with(user(principal())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void githubLookupRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/auth/me/github/lookup").param("username", "octocat"))
+                .andExpect(status().is4xxClientError());
     }
 }

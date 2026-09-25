@@ -1,5 +1,6 @@
 package com.devpulse.auth.service;
 
+import com.devpulse.auth.dto.GithubPreviewResponse;
 import com.devpulse.auth.dto.LinkGithubResponse;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.exception.ConflictException;
@@ -31,6 +32,24 @@ public class GithubIdentityService {
     public GithubIdentityService(UserRepository userRepository, GithubUserLookup githubUserLookup) {
         this.userRepository = userRepository;
         this.githubUserLookup = githubUserLookup;
+    }
+
+    /**
+     * Looks a username up WITHOUT saving anything, so the caller can confirm the
+     * account is theirs. {@link #link} still re-resolves the username itself, so
+     * what gets saved is never taken from this response.
+     */
+    @Transactional(readOnly = true)
+    public GithubPreviewResponse preview(Integer userId, String username) {
+        GithubUserLookup.GithubAccount account = githubUserLookup.findByUsername(username.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("GitHub user", username));
+
+        boolean linkedToAnotherUser = userRepository.findFirstByGithubId(account.id())
+                .map(owner -> !owner.getUserId().equals(userId))
+                .orElse(false);
+
+        return new GithubPreviewResponse(account.id(), account.login(), account.name(),
+                account.avatarUrl(), account.profileUrl(), linkedToAnotherUser);
     }
 
     @Transactional

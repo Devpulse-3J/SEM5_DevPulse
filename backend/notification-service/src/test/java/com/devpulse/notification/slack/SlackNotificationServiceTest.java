@@ -1,8 +1,11 @@
 package com.devpulse.notification.slack;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Properties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
@@ -59,5 +62,23 @@ class SlackNotificationServiceTest {
         boolean result = slackService.sendSlackNotification("#dev-alerts", "Bot alert message");
         assertTrue(result);
         verify(restTemplate).postForEntity(eq("https://slack.com/api/chat.postMessage"), any(HttpEntity.class), eq(String.class));
+    }
+
+    /**
+     * This service and SlackOAuthController read {@code devpulse.notification.slack.*},
+     * while the deployment supplies plain {@code SLACK_*} environment variables. Only
+     * application.yml connects the two. When that block was missing every send was
+     * reported as "Slack is not configured" and the team-message endpoint answered 502.
+     */
+    @Test
+    void everySlackPropertyTheCodeReadsIsBoundToItsEnvironmentVariable() {
+        YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
+        yaml.setResources(new ClassPathResource("application.yml"));
+        Properties props = yaml.getObject();
+
+        assertEquals("${SLACK_WEBHOOK_URL:}", props.getProperty("devpulse.notification.slack.webhook-url"));
+        assertEquals("${SLACK_BOT_TOKEN:}", props.getProperty("devpulse.notification.slack.bot-token"));
+        assertEquals("${SLACK_CLIENT_ID:}", props.getProperty("devpulse.notification.slack.client-id"));
+        assertEquals("${SLACK_CLIENT_SECRET:}", props.getProperty("devpulse.notification.slack.client-secret"));
     }
 }
