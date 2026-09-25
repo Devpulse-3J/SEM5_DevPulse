@@ -196,4 +196,69 @@ class WebhookEventNormalizerTest {
         assertEquals("Implement Auth API", issueUpdated.getSummary());
         assertEquals(5, issueUpdated.getStoryPoints());
     }
+
+    // -- a missing author id must stay unknown, never become "user 1" ---------
+
+    private static String prOpened(String userJson) {
+        return "{\"action\":\"opened\",\"pull_request\":{\"id\":100,\"number\":12,\"title\":\"PR\","
+                + userJson + "\"base\":{\"ref\":\"main\"},\"draft\":false,\"additions\":1,\"deletions\":1,"
+                + "\"changed_files\":1},\"repository\":{\"id\":77}}";
+    }
+
+    @Test
+    void aRealGithubUserIdIsKept() {
+        PrOpenedEvent event = (PrOpenedEvent) normalizer.normalize(
+                "github", "pull_request", 1, prOpened("\"user\":{\"id\":197457783},"));
+
+        assertEquals(197457783, event.getAuthorId());
+    }
+
+    @Test
+    void aPrWithNoUserIdHasNoAuthorInsteadOfUserOne() {
+        PrOpenedEvent noUser = (PrOpenedEvent) normalizer.normalize(
+                "github", "pull_request", 1, prOpened(""));
+        PrOpenedEvent userWithoutId = (PrOpenedEvent) normalizer.normalize(
+                "github", "pull_request", 1, prOpened("\"user\":{\"login\":\"ghost\"},"));
+        PrOpenedEvent nullId = (PrOpenedEvent) normalizer.normalize(
+                "github", "pull_request", 1, prOpened("\"user\":{\"id\":null},"));
+
+        assertNull(noUser.getAuthorId());
+        assertNull(userWithoutId.getAuthorId());
+        assertNull(nullId.getAuthorId());
+    }
+
+    @Test
+    void aUserIdThatIsNotANumberOrDoesNotFitAnIntIsUnknownNotWrapped() {
+        PrOpenedEvent text = (PrOpenedEvent) normalizer.normalize(
+                "github", "pull_request", 1, prOpened("\"user\":{\"id\":\"abc\"},"));
+        PrOpenedEvent huge = (PrOpenedEvent) normalizer.normalize(
+                "github", "pull_request", 1, prOpened("\"user\":{\"id\":9999999999},"));
+
+        assertNull(text.getAuthorId());
+        assertNull(huge.getAuthorId(), "a wrapped id could collide with a different real account");
+    }
+
+    @Test
+    void aPushWithNoSenderIdHasNoAuthorInsteadOfUserOne() {
+        String withoutSender = "{\"head_commit\":{\"id\":\"abc123\",\"message\":\"m\"},\"repository\":{\"id\":77}}";
+        String withSender = "{\"head_commit\":{\"id\":\"abc123\",\"message\":\"m\"},"
+                + "\"repository\":{\"id\":77},\"sender\":{\"id\":42}}";
+
+        CommitPushedEvent missing = (CommitPushedEvent) normalizer.normalize("github", "push", 1, withoutSender);
+        CommitPushedEvent present = (CommitPushedEvent) normalizer.normalize("github", "push", 1, withSender);
+
+        assertNull(missing.getAuthorId());
+        assertEquals(42, present.getAuthorId());
+    }
+
+    @Test
+    void aJiraAssigneeAccountIdIsNotTurnedIntoUserOne() {
+        // Jira identifies people by string account ids, never by numbers.
+        String json = "{\"issue\":{\"id\":\"10001\",\"key\":\"DEV-9\",\"fields\":{\"summary\":\"s\","
+                + "\"assignee\":{\"id\":\"5b10ac8d82e05b22cc7d4ef5\"}}}}";
+
+        IssueUpdatedEvent event = (IssueUpdatedEvent) normalizer.normalize("jira", "issue_updated", 1, json);
+
+        assertNull(event.getAssigneeId());
+    }
 }
