@@ -30,6 +30,24 @@ public class ProjectAccessService {
         return project;
     }
 
+    /**
+     * The project, if the caller is an admin of the company that owns it. Used for
+     * actions that rewrite stored data rather than just read it.
+     */
+    public ProjectScope requireAdminAccess(RequestContext context, Integer projectId) {
+        ProjectScope project = projectScopeRepository.findProject(context.companyId(), projectId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND",
+                        "No project with id " + projectId));
+        String role = projectScopeRepository.findSystemRole(context.companyId(), context.userId())
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "USER_CONTEXT_NOT_FOUND",
+                        "The authenticated user does not belong to this company"));
+        if (!"admin".equalsIgnoreCase(role)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "ADMIN_REQUIRED",
+                    "Only company admins can rebuild DORA history");
+        }
+        return project;
+    }
+
     public void requireCompanyAccess(RequestContext context) {
         projectScopeRepository.findSystemRole(context.companyId(), context.userId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "USER_CONTEXT_NOT_FOUND",
