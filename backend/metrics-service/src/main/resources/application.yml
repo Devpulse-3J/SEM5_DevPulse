@@ -36,7 +36,7 @@ devpulse:
     snapshots:
       enabled: ${DORA_SNAPSHOTS_ENABLED:true}
       cron: ${DORA_SNAPSHOT_CRON:0 5 0 * * *}
-      window-days: ${DORA_SNAPSHOT_WINDOW_DAYS:30}
+      window-days: ${DORA_SNAPSHOT_WINDOW_DAYS:7,14,30,90}
     workload:
       target-active-prs: ${WORKLOAD_TARGET_ACTIVE_PRS:4}
 management:

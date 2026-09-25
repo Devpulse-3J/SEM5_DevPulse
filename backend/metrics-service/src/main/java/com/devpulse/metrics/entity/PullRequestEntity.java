@@ -64,6 +64,9 @@ public class PullRequestEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "first_review_at")
+    private Instant firstReviewAt;
+
     @Column(name = "merged_at")
     private Instant mergedAt;
 
@@ -113,7 +116,12 @@ public class PullRequestEntity {
     public void setFilesChanged(int filesChanged) { this.filesChanged = filesChanged; }
     public String getAuthorAssociation() { return authorAssociation; }
     public void setAuthorAssociation(String authorAssociation) { this.authorAssociation = authorAssociation; }
+    public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Instant getFirstReviewAt() { return firstReviewAt; }
+    public void setFirstReviewAt(Instant firstReviewAt) { this.firstReviewAt = firstReviewAt; }
+    public Instant getMergedAt() { return mergedAt; }
     public void setMergedAt(Instant mergedAt) { this.mergedAt = mergedAt; }
+    public Instant getClosedAt() { return closedAt; }
     public void setClosedAt(Instant closedAt) { this.closedAt = closedAt; }
 }

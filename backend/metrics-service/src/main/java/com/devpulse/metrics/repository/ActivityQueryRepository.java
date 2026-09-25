@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -26,7 +27,7 @@ public class ActivityQueryRepository {
                        pr.author_id, u.full_name AS author_name, u.avatar_url AS author_avatar,
                        r.repo_id, r.repo_name, pr.is_draft, pr.state, pr.head_branch,
                        pr.base_branch, pr.lines_added, pr.lines_deleted, pr.files_changed,
-                       pr.url, pr.created_at, pr.updated_at, pr.merged_at
+                       pr.url, pr.created_at, pr.updated_at, pr.merged_at, pr.first_review_at
                 FROM pull_requests pr
                 JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
                 LEFT JOIN users u ON u.user_id = pr.author_id AND (u.company_id = pr.company_id OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = pr.company_id))
@@ -66,7 +67,8 @@ public class ActivityQueryRepository {
                         rs.getString("url"),
                         instant(rs, "created_at"),
                         instant(rs, "updated_at"),
-                        instant(rs, "merged_at")));
+                        instant(rs, "merged_at"),
+                        instant(rs, "first_review_at")));
     }
 
     public List<ReviewRow> findReviews(List<Integer> prIds) {
@@ -212,6 +214,103 @@ public class ActivityQueryRepository {
                         instant(rs, "merged_at")));
     }
 
+    public List<ReviewVelocityFact> findReviewVelocityFacts(
+            Integer companyId, Integer projectId, Instant windowStart) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT pr.pr_id, pr.github_pr_number, pr.title, pr.author_id, pr.state,
+                       pr.created_at, pr.first_review_at, pr.merged_at, pr.closed_at,
+                       COUNT(rv.review_id) AS review_count,
+                       MIN(rv.reviewed_at) AS min_reviewed_at,
+                       MAX(rv.reviewed_at) AS max_reviewed_at
+                FROM pull_requests pr
+                JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                LEFT JOIN pr_reviews rv ON rv.pr_id = pr.pr_id AND rv.company_id = pr.company_id
+                WHERE pr.company_id = :companyId
+                  AND pr.created_at >= :windowStart
+                """);
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("companyId", companyId)
+                .addValue("windowStart", Timestamp.from(windowStart));
+        if (projectId != null) {
+            sql.append(" AND r.project_id = :projectId");
+            parameters.addValue("projectId", projectId);
+        }
+        sql.append("""
+                 GROUP BY pr.pr_id, pr.github_pr_number, pr.title, pr.author_id, pr.state,
+                          pr.created_at, pr.first_review_at, pr.merged_at, pr.closed_at
+                 ORDER BY pr.created_at DESC
+                """);
+        return jdbcTemplate.query(sql.toString(), parameters,
+                (rs, rowNum) -> new ReviewVelocityFact(
+                        rs.getInt("pr_id"),
+                        rs.getInt("github_pr_number"),
+                        rs.getString("title"),
+                        nullableInteger(rs, "author_id"),
+                        rs.getString("state"),
+                        instant(rs, "created_at"),
+                        instant(rs, "first_review_at"),
+                        instant(rs, "merged_at"),
+                        instant(rs, "closed_at"),
+                        rs.getInt("review_count"),
+                        instant(rs, "min_reviewed_at"),
+                        instant(rs, "max_reviewed_at")));
+    }
+
+    public Map<Integer, Long> countCompletedReviewsByUser(
+            Integer companyId, Integer projectId, Instant windowStart) {
+        String sql = """
+                SELECT rv.reviewer_id, COUNT(rv.review_id) AS review_count
+                FROM pr_reviews rv
+                JOIN pull_requests pr ON pr.pr_id = rv.pr_id AND pr.company_id = rv.company_id
+                JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                WHERE rv.company_id = :companyId AND r.project_id = :projectId
+                  AND rv.reviewed_at >= :windowStart
+                  AND rv.reviewer_id IS NOT NULL
+                GROUP BY rv.reviewer_id
+                """;
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("companyId", companyId)
+                .addValue("projectId", projectId)
+                .addValue("windowStart", Timestamp.from(windowStart));
+        Map<Integer, Long> map = new HashMap<>();
+        jdbcTemplate.query(sql, parameters, rs -> {
+            map.put(rs.getInt("reviewer_id"), rs.getLong("review_count"));
+        });
+        return map;
+    }
+
+    public Map<Integer, Long> countActiveRepositoriesByUser(
+            Integer companyId, Integer projectId, Instant windowStart) {
+        String sql = """
+                SELECT author_id AS user_id, COUNT(DISTINCT repo_id) AS repo_count FROM (
+                    SELECT pr.author_id, pr.repo_id
+                    FROM pull_requests pr
+                    JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                    WHERE pr.company_id = :companyId AND r.project_id = :projectId
+                      AND (pr.state = 'open' OR pr.created_at >= :windowStart)
+                      AND pr.author_id IS NOT NULL
+                    UNION
+                    SELECT rv.reviewer_id AS author_id, pr.repo_id
+                    FROM pr_reviews rv
+                    JOIN pull_requests pr ON pr.pr_id = rv.pr_id AND pr.company_id = rv.company_id
+                    JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
+                    WHERE rv.company_id = :companyId AND r.project_id = :projectId
+                      AND rv.reviewed_at >= :windowStart
+                      AND rv.reviewer_id IS NOT NULL
+                ) activity
+                GROUP BY author_id
+                """;
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("companyId", companyId)
+                .addValue("projectId", projectId)
+                .addValue("windowStart", Timestamp.from(windowStart));
+        Map<Integer, Long> map = new HashMap<>();
+        jdbcTemplate.query(sql, parameters, rs -> {
+            map.put(rs.getInt("user_id"), rs.getLong("repo_count"));
+        });
+        return map;
+    }
+
     private static Instant instant(ResultSet rs, String column) throws SQLException {
         Timestamp value = rs.getTimestamp(column);
         return value == null ? null : value.toInstant();
@@ -232,7 +331,19 @@ public class ActivityQueryRepository {
             Integer authorId, String authorName, String authorAvatar,
             Integer repositoryId, String repositoryName, boolean draft, String state,
             String headBranch, String baseBranch, int additions, int deletions,
-            int changedFiles, String url, Instant createdAt, Instant updatedAt, Instant mergedAt) {
+            int changedFiles, String url, Instant createdAt, Instant updatedAt, Instant mergedAt,
+            Instant firstReviewAt) {
+
+        public PullRequestRow(
+                Integer id, int number, String title, String description,
+                Integer authorId, String authorName, String authorAvatar,
+                Integer repositoryId, String repositoryName, boolean draft, String state,
+                String headBranch, String baseBranch, int additions, int deletions,
+                int changedFiles, String url, Instant createdAt, Instant updatedAt, Instant mergedAt) {
+            this(id, number, title, description, authorId, authorName, authorAvatar,
+                    repositoryId, repositoryName, draft, state, headBranch, baseBranch,
+                    additions, deletions, changedFiles, url, createdAt, updatedAt, mergedAt, null);
+        }
     }
 
     /** risk_score is the model's probability, 0 to 1. risk_category is low, medium or high. */
@@ -260,5 +371,20 @@ public class ActivityQueryRepository {
 
     public record PullRequestCycleFact(
             Integer authorId, String state, Instant createdAt, Instant mergedAt) {
+    }
+
+    public record ReviewVelocityFact(
+            Integer prId,
+            int prNumber,
+            String title,
+            Integer authorId,
+            String state,
+            Instant createdAt,
+            Instant firstReviewAt,
+            Instant mergedAt,
+            Instant closedAt,
+            int reviewCount,
+            Instant minReviewedAt,
+            Instant maxReviewedAt) {
     }
 }
