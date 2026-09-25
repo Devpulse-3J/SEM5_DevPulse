@@ -13,7 +13,7 @@ failure in the UI.
 
 | Layer | Choice | Where it is pinned |
 |---|---|---|
-| Java services | Java 17 · Spring Boot 3.3.5 | `backend/pom.xml` |
+| Java services | Java 25 · Spring Boot 3.3.5 | `backend/pom.xml` |
 | Gateway | Spring Cloud Gateway 2023.0.3 (reactive, WebFlux) | `backend/api-gateway/pom.xml` |
 | Persistence | Spring Data JPA / Hibernate 6 | per-service POMs |
 | Database | **One shared** PostgreSQL 16 · `devpulse` | `infrastructure/docker/docker-compose.yml` |

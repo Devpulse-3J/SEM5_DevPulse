@@ -478,7 +478,7 @@ Verify with `java -version`, `python --version`, `docker compose version`.
 
 The one-time bootstrap is complete and merged. For reference, it delivered:
 
-- **Maven multi-module build** — parent `backend/pom.xml` (Spring Boot 3.3.5, Java 17, Spring
+- **Maven multi-module build** — parent `backend/pom.xml` (Spring Boot 3.3.5, Java 25, Spring
   Cloud 2023.0.3) aggregating `shared-contracts` and the five Java services, each with its own
   `pom.xml`.
 - **Maven layout** — sources under `backend/<service>/src/main/java/com/devpulse/<pkg>/`,
