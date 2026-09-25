@@ -95,4 +95,80 @@ class DoraCalculatorsTest {
         Instant recoveredAt = recoveryHours == null ? null : deployedAt.plus(recoveryHours, ChronoUnit.HOURS);
         return new DeploymentFact(status, deployedAt, recoveredAt, commitTime);
     }
+
+    // -- MTTR when the fix is a NEW deployment (the normal case) ---------------
+    //
+    // A recovery time is only stored when the same GitHub deployment flips from
+    // failed to success. A retry or fix is a new deployment, so nothing carried one
+    // and MTTR was "not available" even though every failure had been fixed.
+
+    private DeploymentFact at(DeploymentStatus status, String time) {
+        return new DeploymentFact(status, Instant.parse(time), null, null);
+    }
+
+    private MetricWindow julyWindow() {
+        return new MetricWindow(Instant.parse("2026-07-01T00:00:00Z"), Instant.parse("2026-08-01T00:00:00Z"), 31);
+    }
+
+    @Test
+    void mttrUsesTheNextSuccessfulDeploymentWhenNoRecoveryTimeWasRecorded() {
+        var result = new MttrCalculator().calculate(List.of(
+                at(DeploymentStatus.SUCCESS, "2026-07-01T00:00:00Z"),
+                at(DeploymentStatus.FAILED, "2026-07-02T10:00:00Z"),
+                at(DeploymentStatus.SUCCESS, "2026-07-02T14:00:00Z")), julyWindow());
+
+        assertThat(result.value()).isEqualByComparingTo("4.00");
+        assertThat(result.sampleSize()).isEqualTo(1);
+    }
+
+    @Test
+    void mttrMeasuresEveryFailureToTheSameNextSuccess() {
+        var result = new MttrCalculator().calculate(List.of(
+                at(DeploymentStatus.FAILED, "2026-07-02T00:00:00Z"),
+                at(DeploymentStatus.FAILED, "2026-07-02T02:00:00Z"),
+                at(DeploymentStatus.SUCCESS, "2026-07-02T08:00:00Z")), julyWindow());
+
+        // 8h and 6h to the same fix.
+        assertThat(result.value()).isEqualByComparingTo("7.00");
+        assertThat(result.sampleSize()).isEqualTo(2);
+    }
+
+    @Test
+    void mttrPrefersAnExplicitRecoveryTimeOverTheNextSuccess() {
+        var explicit = new DeploymentFact(DeploymentStatus.FAILED, Instant.parse("2026-07-02T00:00:00Z"),
+                Instant.parse("2026-07-02T02:00:00Z"), null);
+
+        var result = new MttrCalculator().calculate(List.of(
+                explicit, at(DeploymentStatus.SUCCESS, "2026-07-02T12:00:00Z")), julyWindow());
+
+        assertThat(result.value()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void mttrLeavesOutAFailureThatNeverRecovered() {
+        var result = new MttrCalculator().calculate(List.of(
+                at(DeploymentStatus.SUCCESS, "2026-07-01T00:00:00Z"),
+                at(DeploymentStatus.FAILED, "2026-07-05T00:00:00Z")), julyWindow());
+
+        assertThat(result.value()).isNull();
+        assertThat(result.sampleSize()).isEqualTo(0);
+    }
+
+    @Test
+    void mttrIgnoresAPendingDeploymentAsARecovery() {
+        var result = new MttrCalculator().calculate(List.of(
+                at(DeploymentStatus.FAILED, "2026-07-05T00:00:00Z"),
+                at(DeploymentStatus.PENDING, "2026-07-05T01:00:00Z")), julyWindow());
+
+        assertThat(result.value()).isNull();
+    }
+
+    @Test
+    void mttrDoesNotDependOnTheOrderTheFactsArriveIn() {
+        var result = new MttrCalculator().calculate(List.of(
+                at(DeploymentStatus.SUCCESS, "2026-07-02T14:00:00Z"),
+                at(DeploymentStatus.FAILED, "2026-07-02T10:00:00Z")), julyWindow());
+
+        assertThat(result.value()).isEqualByComparingTo("4.00");
+    }
 }

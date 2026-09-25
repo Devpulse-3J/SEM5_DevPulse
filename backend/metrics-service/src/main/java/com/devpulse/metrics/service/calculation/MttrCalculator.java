@@ -8,6 +8,8 @@ import com.devpulse.metrics.domain.MetricWindow;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -21,15 +23,29 @@ public class MttrCalculator implements DoraMetricCalculator {
         return DoraMetricKey.MTTR;
     }
 
+    /**
+     * Mean time from a failed (or rolled-back) production deployment to recovery.
+     *
+     * <p>Recovery is the explicit {@code failureRecoveredAt} when one was recorded,
+     * otherwise the next SUCCESSFUL deployment after the failure. An explicit time is
+     * only ever recorded when the SAME GitHub deployment later flips from failed to
+     * success, but a retry or a fix is a NEW deployment, so in practice nothing
+     * carried a recovery time and MTTR was "not available" however many failures
+     * had been fixed. A failure with no later success is still unrecovered and is
+     * left out rather than counted as zero.
+     */
     @Override
     public MetricResult calculate(List<DeploymentFact> facts, MetricWindow window) {
-        List<Duration> durations = facts.stream()
+        List<DeploymentFact> ordered = facts.stream()
+                .sorted(Comparator.comparing(DeploymentFact::deployedAt))
+                .toList();
+
+        List<Duration> durations = ordered.stream()
                 .filter(fact -> window.contains(fact.deployedAt()))
                 .filter(fact -> fact.status() == DeploymentStatus.FAILED
                         || fact.status() == DeploymentStatus.ROLLED_BACK)
-                .filter(fact -> fact.failureRecoveredAt() != null)
-                .filter(fact -> !fact.failureRecoveredAt().isBefore(fact.deployedAt()))
-                .map(fact -> Duration.between(fact.deployedAt(), fact.failureRecoveredAt()))
+                .map(fact -> recoveredAt(fact, ordered))
+                .filter(java.util.Objects::nonNull)
                 .toList();
         if (durations.isEmpty()) {
             return new MetricResult(key(), null, 0);
@@ -39,5 +55,22 @@ public class MttrCalculator implements DoraMetricCalculator {
                 .divide(MILLIS_PER_HOUR, 8, RoundingMode.HALF_UP)
                 .divide(BigDecimal.valueOf(durations.size()), 2, RoundingMode.HALF_UP);
         return new MetricResult(key(), hours, durations.size());
+    }
+
+    /** Time to recover for one failed deployment, or null when it has not recovered. */
+    private static Duration recoveredAt(DeploymentFact failure, List<DeploymentFact> ordered) {
+        Instant recovered = failure.failureRecoveredAt();
+        if (recovered == null) {
+            recovered = ordered.stream()
+                    .filter(next -> next.status() == DeploymentStatus.SUCCESS)
+                    .map(DeploymentFact::deployedAt)
+                    .filter(at -> at.isAfter(failure.deployedAt()))
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (recovered == null || recovered.isBefore(failure.deployedAt())) {
+            return null;
+        }
+        return Duration.between(failure.deployedAt(), recovered);
     }
 }
