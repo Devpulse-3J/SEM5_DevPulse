@@ -6,6 +6,7 @@ import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.dto.UserProfileResponse;
 import com.devpulse.auth.entity.Company;
 import com.devpulse.auth.entity.CompanyMember;
+import com.devpulse.auth.entity.Project;
 import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.SystemRole;
@@ -18,10 +19,14 @@ import com.devpulse.auth.mapper.UserMapper;
 import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
+import com.devpulse.auth.repository.ProjectRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.JwtService;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -41,6 +46,7 @@ public class AuthServiceImpl implements AuthService {
     private final CompanyRepository companyRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final CompanyMemberRepository companyMemberRepository;
+    private final ProjectRepository projectRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -51,6 +57,7 @@ public class AuthServiceImpl implements AuthService {
                            CompanyRepository companyRepository,
                            ProjectMemberRepository projectMemberRepository,
                            CompanyMemberRepository companyMemberRepository,
+                           ProjectRepository projectRepository,
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
                            AuthenticationManager authenticationManager,
@@ -60,6 +67,7 @@ public class AuthServiceImpl implements AuthService {
         this.companyRepository = companyRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.companyMemberRepository = companyMemberRepository;
+        this.projectRepository = projectRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
@@ -232,12 +240,67 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getUserProfile(Integer userId) {
+        return getUserProfile(userId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserProfileResponse getUserProfile(Integer userId, Integer activeCompanyId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
 
         List<ProjectMember> memberships = projectMemberRepository.findByUserId(userId);
+        List<CompanyMember> companyMemberships = companyMemberRepository.findByUserId(userId);
 
-        return userMapper.toUserProfileResponse(user, memberships);
+        // Home company unless the token names another one the user belongs to.
+        Company activeCompany = user.getCompany();
+        String activeRole = user.getSystemRole();
+        if (activeCompanyId != null) {
+            for (CompanyMember membership : companyMemberships) {
+                if (membership.getCompanyId().equals(activeCompanyId)) {
+                    Company named = companyRepository.findById(activeCompanyId).orElse(null);
+                    if (named != null) {
+                        activeCompany = named;
+                        activeRole = membership.getRole();
+                    }
+                    break;
+                }
+            }
+        }
+
+        Map<Integer, Project> projectsById = projectRepository
+                .findAllById(memberships.stream().map(ProjectMember::getProjectId).toList())
+                .stream()
+                .collect(Collectors.toMap(Project::getProjectId, Function.identity()));
+
+        Map<Integer, Company> companiesById = companyRepository
+                .findAllById(companyMemberships.stream().map(CompanyMember::getCompanyId).toList())
+                .stream()
+                .collect(Collectors.toMap(Company::getCompanyId, Function.identity()));
+
+        List<UserProfileResponse.ProjectRoleEntry> projectRoles = memberships.stream()
+                .map(pm -> {
+                    Project project = projectsById.get(pm.getProjectId());
+                    Company owner = project != null ? project.getCompany() : null;
+                    return new UserProfileResponse.ProjectRoleEntry(
+                            pm.getProjectId(), pm.getRole(),
+                            owner != null ? owner.getCompanyId() : null,
+                            owner != null ? owner.getCompanyName() : null,
+                            project != null ? project.getProjectName() : null);
+                })
+                .toList();
+
+        List<UserProfileResponse.CompanyEntry> companies = companyMemberships.stream()
+                .map(cm -> {
+                    Company company = companiesById.get(cm.getCompanyId());
+                    return new UserProfileResponse.CompanyEntry(
+                            cm.getCompanyId(),
+                            company != null ? company.getCompanyName() : null,
+                            cm.getRole());
+                })
+                .toList();
+
+        return userMapper.toUserProfileResponse(user, activeCompany, activeRole, projectRoles, companies);
     }
 
     @Override

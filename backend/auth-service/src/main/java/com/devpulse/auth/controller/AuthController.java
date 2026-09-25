@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -62,9 +63,29 @@ public class AuthController {
      */
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> me(
-            @AuthenticationPrincipal User user) {
-        UserProfileResponse profile = authService.getUserProfile(user.getUserId());
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "X-Company-Id", required = false) String companyHeader) {
+        // The gateway sets X-Company-Id from the token's companyId claim, so this
+        // is the company the caller is currently acting in (it differs from their
+        // home company after /auth/companies/{id}/switch). It is optional: a user
+        // with no company has no claim, and must still get a profile.
+        Integer activeCompanyId = parseCompanyId(companyHeader);
+        UserProfileResponse profile = activeCompanyId == null
+                ? authService.getUserProfile(user.getUserId())
+                : authService.getUserProfile(user.getUserId(), activeCompanyId);
         return ResponseEntity.ok(profile);
+    }
+
+    private static Integer parseCompanyId(String header) {
+        if (header == null || header.isBlank()) {
+            return null;
+        }
+        try {
+            int id = Integer.parseInt(header.trim());
+            return id > 0 ? id : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

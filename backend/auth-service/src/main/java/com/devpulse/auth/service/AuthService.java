@@ -36,6 +36,17 @@ public interface AuthService {
     UserProfileResponse getUserProfile(Integer userId);
 
     /**
+     * Same as {@link #getUserProfile(Integer)}, but scoped to the company the
+     * caller's token names ({@code X-Company-Id}) when they belong to it, so
+     * {@code companyId}, {@code companyName} and {@code systemRole} describe
+     * the company they are acting in rather than always their home one. Falls
+     * back to the home company when {@code activeCompanyId} is not one they
+     * belong to. Also lists every company they belong to and, per project,
+     * which company it is in.
+     */
+    UserProfileResponse getUserProfile(Integer userId, Integer activeCompanyId);
+
+    /**
      * Issues a new token scoped to {@code targetCompanyId} instead of the
      * caller's home company, provided a {@code company_members} row records
      * that they belong there. Lets a non-admin who has been added to more

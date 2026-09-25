@@ -2,7 +2,9 @@ package com.devpulse.auth.mapper;
 
 import com.devpulse.auth.dto.AuthResponse;
 import com.devpulse.auth.dto.UserProfileResponse;
+import com.devpulse.auth.dto.UserProfileResponse.CompanyEntry;
 import com.devpulse.auth.dto.UserProfileResponse.ProjectRoleEntry;
+import com.devpulse.auth.entity.Company;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.User;
 import java.util.List;
@@ -46,20 +48,31 @@ public class UserMapper {
 
     /**
      * Converts a {@link User} entity and associated {@link ProjectMember} memberships into a {@link UserProfileResponse}.
+     * Scoped to the user's home company/role, with no company or project detail.
      */
     public UserProfileResponse toUserProfileResponse(User user, List<ProjectMember> memberships) {
         List<ProjectRoleEntry> projectRoles = memberships.stream()
                 .map(this::toProjectRoleEntry)
                 .collect(Collectors.toList());
+        return toUserProfileResponse(user, user.getCompany(), user.getSystemRole(), projectRoles, List.of());
+    }
 
+    /**
+     * Profile scoped to an explicit active company and the caller's role in it,
+     * with per-project company detail and every company the user belongs to.
+     */
+    public UserProfileResponse toUserProfileResponse(User user, Company activeCompany, String activeRole,
+                                                     List<ProjectRoleEntry> projectRoles,
+                                                     List<CompanyEntry> companies) {
         UserProfileResponse profile = new UserProfileResponse();
         profile.setUserId(user.getUserId());
         profile.setEmail(user.getEmail());
         profile.setFullName(user.getFullName());
-        profile.setSystemRole(user.getSystemRole());
-        profile.setCompanyId(user.getCompany() != null ? user.getCompany().getCompanyId() : null);
-        profile.setCompanyName(user.getCompany() != null ? user.getCompany().getCompanyName() : null);
+        profile.setSystemRole(activeRole);
+        profile.setCompanyId(activeCompany != null ? activeCompany.getCompanyId() : null);
+        profile.setCompanyName(activeCompany != null ? activeCompany.getCompanyName() : null);
         profile.setProjectRoles(projectRoles);
+        profile.setCompanies(companies);
 
         return profile;
     }

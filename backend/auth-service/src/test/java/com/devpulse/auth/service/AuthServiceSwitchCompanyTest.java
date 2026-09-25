@@ -9,6 +9,7 @@ import com.devpulse.auth.mapper.UserMapper;
 import com.devpulse.auth.repository.CompanyMemberRepository;
 import com.devpulse.auth.repository.CompanyRepository;
 import com.devpulse.auth.repository.ProjectMemberRepository;
+import com.devpulse.auth.repository.ProjectRepository;
 import com.devpulse.auth.repository.UserRepository;
 import com.devpulse.auth.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,8 @@ public class AuthServiceSwitchCompanyTest {
 
     private UserRepository userRepository;
     private CompanyMemberRepository companyMemberRepository;
+    private CompanyRepository companyRepository;
+    private ProjectRepository projectRepository;
     private JwtService jwtService;
     private AuthServiceImpl service;
 
@@ -44,7 +47,8 @@ public class AuthServiceSwitchCompanyTest {
     @BeforeEach
     public void setUp() {
         userRepository = mock(UserRepository.class);
-        CompanyRepository companyRepository = mock(CompanyRepository.class);
+        companyRepository = mock(CompanyRepository.class);
+        projectRepository = mock(ProjectRepository.class);
         ProjectMemberRepository projectMemberRepository = mock(ProjectMemberRepository.class);
         companyMemberRepository = mock(CompanyMemberRepository.class);
         PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
@@ -53,8 +57,8 @@ public class AuthServiceSwitchCompanyTest {
         ProjectInvitationClaimService claimService = mock(ProjectInvitationClaimService.class);
 
         service = new AuthServiceImpl(userRepository, companyRepository, projectMemberRepository,
-                companyMemberRepository, passwordEncoder, jwtService, authenticationManager,
-                new UserMapper(), claimService);
+                companyMemberRepository, projectRepository, passwordEncoder, jwtService,
+                authenticationManager, new UserMapper(), claimService);
 
         user = new User();
         user.setUserId(20);
