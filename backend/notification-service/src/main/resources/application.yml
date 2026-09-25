@@ -31,6 +31,18 @@ spring:
           auth: true
           starttls:
             enable: true
+devpulse:
+  notification:
+    slack:
+      # SlackNotificationService / SlackOAuthController read these property
+      # names. Without this block the SLACK_* variables reach the container but
+      # nothing binds them, so every Slack send reports "not configured" and the
+      # team-message endpoint answers 502 (zero delivered).
+      webhook-url: ${SLACK_WEBHOOK_URL:}
+      bot-token: ${SLACK_BOT_TOKEN:}
+      client-id: ${SLACK_CLIENT_ID:}
+      client-secret: ${SLACK_CLIENT_SECRET:}
+      redirect-uri: ${SLACK_REDIRECT_URI:http://localhost:8084/api/slack/oauth/callback}
 management:
   endpoints:
     web:
