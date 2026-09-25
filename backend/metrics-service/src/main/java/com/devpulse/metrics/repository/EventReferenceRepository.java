@@ -39,19 +39,26 @@ public class EventReferenceRepository {
         return resolveUserId(companyId, eventUserId, null);
     }
 
+    /**
+     * Maps a GitHub author (id and/or email) to a user of {@code companyId}.
+     * "A user of the company" means a company_members row OR the legacy home
+     * company: a person can belong to several companies, so requiring
+     * users.company_id to match left every cross-company member's PRs and
+     * commits with no author.
+     */
     public Optional<Integer> resolveUserId(Integer companyId, Integer eventUserId, String email) {
         if (eventUserId != null) {
             List<Integer> byGithubId = jdbcTemplate.query("""
-                    SELECT user_id FROM users WHERE company_id = ? AND github_id = ?
-                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, eventUserId.longValue());
+                    SELECT u.user_id FROM users u WHERE (u.company_id = ? OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = ?)) AND u.github_id = ?
+                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, companyId, eventUserId.longValue());
             if (!byGithubId.isEmpty()) {
                 return Optional.of(byGithubId.get(0));
             }
         }
         if (email != null && !email.isBlank()) {
             List<Integer> byEmail = jdbcTemplate.query("""
-                    SELECT user_id FROM users WHERE company_id = ? AND LOWER(email) = LOWER(?)
-                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, email.trim());
+                    SELECT u.user_id FROM users u WHERE (u.company_id = ? OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = ?)) AND LOWER(u.email) = LOWER(?)
+                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, companyId, email.trim());
             if (!byEmail.isEmpty()) {
                 Integer userId = byEmail.get(0);
                 if (eventUserId != null) {
@@ -64,8 +71,8 @@ public class EventReferenceRepository {
         }
         if (eventUserId != null) {
             return jdbcTemplate.query("""
-                    SELECT user_id FROM users WHERE company_id = ? AND user_id = ?
-                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, eventUserId)
+                    SELECT u.user_id FROM users u WHERE (u.company_id = ? OR EXISTS (SELECT 1 FROM company_members cm WHERE cm.user_id = u.user_id AND cm.company_id = ?)) AND u.user_id = ?
+                    """, (rs, rowNum) -> rs.getInt("user_id"), companyId, companyId, eventUserId)
                     .stream().findFirst();
         }
         return Optional.empty();
