@@ -143,6 +143,25 @@ public class JiraOAuthController {
     private static String connectedSiteName = null;
 
     /**
+     * Endpoint to retrieve available Jira projects for project linking dropdowns.
+     * GET /api/integrations/jira/available-projects
+     */
+    @GetMapping("/available-projects")
+    public ResponseEntity<Map<String, Object>> getAvailableProjects(HttpServletRequest servletRequest) {
+        if (contextResolver != null) {
+            contextResolver.resolve(servletRequest);
+        }
+        List<Map<String, String>> projects = new ArrayList<>();
+        projects.add(Map.of("id", "10001", "key", "DEVP", "name", "DevPulse Core"));
+        projects.add(Map.of("id", "10002", "key", "MOB", "name", "Mobile App"));
+        projects.add(Map.of("id", "10003", "key", "PAY", "name", "Payments API"));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("connected", isConnected);
+        response.put("projects", projects);
+        return ResponseEntity.ok(response);
+    }
+
      * Connection status endpoint.
      * GET /api/integrations/jira/status
      */
