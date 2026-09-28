@@ -53,6 +53,9 @@ public class User implements UserDetails {
     @Column(name = "github_id")
     private Long githubId;
 
+    @Column(name = "github_username", length = 255)
+    private String githubUsername;
+
     @Column(name = "jira_account_id", length = 128)
     private String jiraAccountId;
 
@@ -191,6 +194,14 @@ public class User implements UserDetails {
 
     public void setGithubId(Long githubId) {
         this.githubId = githubId;
+    }
+
+    public String getGithubUsername() {
+        return githubUsername;
+    }
+
+    public void setGithubUsername(String githubUsername) {
+        this.githubUsername = githubUsername;
     }
 
     public String getJiraAccountId() {
