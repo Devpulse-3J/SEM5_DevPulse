@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: ${SERVER_PORT:8081}
 spring:
   application:
@@ -35,6 +35,10 @@ devpulse:
   frontend:
     # Origin used in the links inside invitation emails.
     base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+github:
+  client-id: ${GITHUB_CLIENT_ID:}
+  client-secret: ${GITHUB_CLIENT_SECRET:}
+  redirect-uri: ${GITHUB_REDIRECT_URI:${devpulse.frontend.base-url}/auth/github/callback}
 management:
   info:
     env:

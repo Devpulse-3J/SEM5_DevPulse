@@ -19,6 +19,7 @@ public class UserProfileResponse {
     private List<CompanyEntry> companies;
     /** The linked GitHub account's numeric id, or null when none is linked. */
     private Long githubId;
+    private String githubUsername;
 
     // -- constructors --------------------------------------------------------
 
@@ -207,5 +208,13 @@ public class UserProfileResponse {
 
     public void setGithubId(Long githubId) {
         this.githubId = githubId;
+    }
+
+    public String getGithubUsername() {
+        return githubUsername;
+    }
+
+    public void setGithubUsername(String githubUsername) {
+        this.githubUsername = githubUsername;
     }
 }

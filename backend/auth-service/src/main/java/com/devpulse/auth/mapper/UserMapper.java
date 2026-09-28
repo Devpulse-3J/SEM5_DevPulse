@@ -74,6 +74,7 @@ public class UserMapper {
         profile.setProjectRoles(projectRoles);
         profile.setCompanies(companies);
         profile.setGithubId(user.getGithubId());
+        profile.setGithubUsername(user.getGithubUsername());
 
         return profile;
     }
