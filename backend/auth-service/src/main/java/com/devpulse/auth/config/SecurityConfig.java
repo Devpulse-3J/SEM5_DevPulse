@@ -44,6 +44,7 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/auth/register",
                     "/auth/login",
+                    "/auth/me/github/connect",
                     "/auth/me/github/callback",
                     "/actuator/health",
                     "/actuator/info"
