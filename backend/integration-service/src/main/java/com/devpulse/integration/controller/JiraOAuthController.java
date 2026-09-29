@@ -34,6 +34,7 @@ public class JiraOAuthController {
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
+    private final String frontendBaseUrl;
     private final JiraIssueRepository jiraIssueRepository;
     private final RequestContextResolver contextResolver;
 
@@ -44,14 +45,37 @@ public class JiraOAuthController {
             @Autowired(required = false) RequestContextResolver contextResolver,
             @Value("${ATLASSIAN_CLIENT_ID:devpulse-jira-client-id}") String clientId,
             @Value("${ATLASSIAN_CLIENT_SECRET:}") String clientSecret,
-            @Value("${ATLASSIAN_REDIRECT_URI:http://localhost:8080/api/integrations/jira/oauth/callback}") String redirectUri) {
+            @Value("${ATLASSIAN_REDIRECT_URI:}") String redirectUri,
+            @Value("${FRONTEND_BASE_URL:}") String frontendBaseUrl) {
         this.restTemplate = restTemplate != null ? restTemplate : new RestTemplate();
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.jiraIssueRepository = jiraIssueRepository;
         this.contextResolver = contextResolver != null ? contextResolver : new RequestContextResolver();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
-        this.redirectUri = redirectUri;
+        
+        String cleanFrontendUrl = (frontendBaseUrl != null && !frontendBaseUrl.isBlank()) 
+                ? frontendBaseUrl.replaceAll("/+$", "") 
+                : "";
+        this.frontendBaseUrl = cleanFrontendUrl;
+
+        if (redirectUri != null && !redirectUri.isBlank()) {
+            this.redirectUri = redirectUri;
+        } else if (!cleanFrontendUrl.isBlank()) {
+            this.redirectUri = cleanFrontendUrl + "/api/integrations/jira/oauth/callback";
+        } else {
+            this.redirectUri = "http://localhost:8080/api/integrations/jira/oauth/callback";
+        }
+    }
+
+    private void tryResolveContext(HttpServletRequest servletRequest) {
+        if (contextResolver != null) {
+            try {
+                contextResolver.resolve(servletRequest);
+            } catch (Exception e) {
+                log.debug("No gateway identity headers present on request: {}", e.getMessage());
+            }
+        }
     }
 
     /**
@@ -60,9 +84,8 @@ public class JiraOAuthController {
      */
     @GetMapping("/oauth/install")
     public ResponseEntity<Map<String, String>> getOAuthInstallUrl(HttpServletRequest servletRequest) {
-        if (contextResolver != null) {
-            contextResolver.resolve(servletRequest);
-        }
+        tryResolveContext(servletRequest);
+
         String scope = "read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access";
         String encodedScope = URLEncoder.encode(scope, StandardCharsets.UTF_8);
         String encodedRedirect = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
@@ -75,6 +98,7 @@ public class JiraOAuthController {
         log.info("Generated Atlassian OAuth Install URL: {}", authUrl);
         return ResponseEntity.ok(Map.of(
                 "installUrl", authUrl,
+                "url", authUrl,
                 "status", "ok"
         ));
     }
@@ -85,9 +109,14 @@ public class JiraOAuthController {
      */
     @GetMapping("/oauth/callback")
     public ResponseEntity<Map<String, Object>> handleOAuthCallback(@RequestParam(value = "code", required = false) String code) {
+        String baseTarget = !frontendBaseUrl.isBlank() ? frontendBaseUrl : "http://localhost:3000";
+        String targetRedirect = baseTarget + "/admin/integrations/jira?jira=";
+
         if (code == null || code.isBlank()) {
             log.warn("Jira OAuth callback invoked without authorization code");
-            return ResponseEntity.badRequest().body(Map.of("error", "Missing authorization code"));
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, targetRedirect + "error")
+                    .body(Map.of("error", "Missing authorization code"));
         }
 
         log.info("Received Jira OAuth callback code");
@@ -111,11 +140,9 @@ public class JiraOAuthController {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 JsonNode root = objectMapper.readTree(response.getBody());
                 String accessToken = root.path("access_token").asText(null);
-                String refreshToken = root.path("refresh_token").asText(null);
 
                 log.info("Successfully exchanged authorization code for Atlassian access token");
 
-                // Fetch accessible Jira sites/resources
                 List<Map<String, String>> sites = fetchAccessibleResources(accessToken);
 
                 isConnected = true;
@@ -124,7 +151,7 @@ public class JiraOAuthController {
                 }
 
                 return ResponseEntity.status(HttpStatus.FOUND)
-                        .header(HttpHeaders.LOCATION, "http://localhost:3000/settings/integrations?jira=success")
+                        .header(HttpHeaders.LOCATION, targetRedirect + "success")
                         .body(Map.of(
                                 "status", "success",
                                 "message", "Successfully connected Jira Cloud workspace",
@@ -135,7 +162,8 @@ public class JiraOAuthController {
             log.error("Failed Jira OAuth token exchange: {}", e.getMessage());
         }
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, targetRedirect + "error")
                 .body(Map.of("error", "Failed to complete Jira OAuth authentication"));
     }
 
@@ -148,9 +176,8 @@ public class JiraOAuthController {
      */
     @GetMapping("/available-projects")
     public ResponseEntity<Map<String, Object>> getAvailableProjects(HttpServletRequest servletRequest) {
-        if (contextResolver != null) {
-            contextResolver.resolve(servletRequest);
-        }
+        tryResolveContext(servletRequest);
+
         List<Map<String, String>> projects = new ArrayList<>();
         projects.add(Map.of("id", "10001", "key", "DEVP", "name", "DevPulse Core"));
         projects.add(Map.of("id", "10002", "key", "MOB", "name", "Mobile App"));
@@ -162,14 +189,14 @@ public class JiraOAuthController {
         return ResponseEntity.ok(response);
     }
 
+    /**
      * Connection status endpoint.
      * GET /api/integrations/jira/status
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getJiraStatus(HttpServletRequest servletRequest) {
-        if (contextResolver != null) {
-            contextResolver.resolve(servletRequest);
-        }
+        tryResolveContext(servletRequest);
+
         Map<String, Object> response = new HashMap<>();
         response.put("connected", isConnected);
         response.put("provider", "jira");
@@ -186,9 +213,13 @@ public class JiraOAuthController {
      */
     @GetMapping("/issues")
     public ResponseEntity<List<JiraIssue>> getStoredIssues(HttpServletRequest servletRequest) {
-        RequestContext context = contextResolver.resolve(servletRequest);
-        if (jiraIssueRepository != null) {
-            return ResponseEntity.ok(jiraIssueRepository.findByCompanyId(context.companyId()));
+        try {
+            RequestContext context = contextResolver.resolve(servletRequest);
+            if (jiraIssueRepository != null) {
+                return ResponseEntity.ok(jiraIssueRepository.findByCompanyId(context.companyId()));
+            }
+        } catch (Exception e) {
+            log.debug("No gateway identity headers on getStoredIssues: {}", e.getMessage());
         }
         return ResponseEntity.ok(List.of());
     }
@@ -199,9 +230,8 @@ public class JiraOAuthController {
      */
     @PostMapping("/disconnect")
     public ResponseEntity<Map<String, Object>> disconnectJira(HttpServletRequest servletRequest) {
-        if (contextResolver != null) {
-            contextResolver.resolve(servletRequest);
-        }
+        tryResolveContext(servletRequest);
+
         isConnected = false;
         connectedSiteName = null;
         log.info("Disconnected Jira Cloud integration");
