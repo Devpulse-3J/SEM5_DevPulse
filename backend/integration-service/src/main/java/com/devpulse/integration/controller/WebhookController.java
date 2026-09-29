@@ -9,6 +9,7 @@ import com.devpulse.integration.jira.JiraSignatureValidator;
 import com.devpulse.integration.repository.JiraIssueRepository;
 import com.devpulse.integration.repository.RawEventLogRepository;
 import com.devpulse.integration.repository.RepoRepository;
+import com.devpulse.integration.repository.TenantAccessRepository;
 import com.devpulse.integration.service.EventPublisherService;
 import com.devpulse.integration.service.WebhookEventNormalizer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,6 +43,7 @@ public class WebhookController {
     private final WebhookEventNormalizer normalizer;
     private final EventPublisherService eventPublisherService;
     private final ObjectMapper objectMapper;
+    private final TenantAccessRepository tenantAccessRepository;
 
     public WebhookController(RawEventLogRepository rawEventLogRepository,
             RepoRepository repoRepository,
@@ -50,7 +52,8 @@ public class WebhookController {
             JiraSignatureValidator jiraSignatureValidator,
             WebhookEventNormalizer normalizer,
             EventPublisherService eventPublisherService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            TenantAccessRepository tenantAccessRepository) {
         this.rawEventLogRepository = rawEventLogRepository;
         this.repoRepository = repoRepository;
         this.jiraIssueRepository = jiraIssueRepository;
@@ -59,6 +62,7 @@ public class WebhookController {
         this.normalizer = normalizer;
         this.eventPublisherService = eventPublisherService;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.tenantAccessRepository = tenantAccessRepository;
     }
 
     @PostMapping("/github")
@@ -231,14 +235,25 @@ public class WebhookController {
                 String issueType = fields.path("issuetype").path("name").asText("Task");
                 String priority = fields.path("priority").path("name").asText("Medium");
                 String status = fields.path("status").path("name").asText("In Progress");
-                Integer storyPoints = fields.path("customfield_10016").asInt(fields.path("storyPoints").asInt(0));
-                Integer assigneeId = fields.path("assignee").has("id") ? fields.path("assignee").path("id").asInt(0) : null;
-                Integer projectId = root.path("project").has("id") ? root.path("project").path("id").asInt(1) : 1;
+                Integer storyPoints = fields.path("customfield_10016").isInt()
+                        ? fields.path("customfield_10016").asInt() : null;
+
+                // Jira Cloud identifies both the project and the assignee by opaque
+                // ids/accountIds with no DevPulse equivalent, so both are resolved
+                // through the same lookups the pull-based sync uses: project by the
+                // key an admin linked in Create/Edit Project, assignee by email.
+                String projectKey = fields.path("project").path("key").asText(null);
+                Integer projectId = tenantAccessRepository
+                        .findProjectIdByJiraKey(effectiveCompanyId, projectKey).orElse(null);
+                String assigneeEmail = fields.path("assignee").path("emailAddress").asText(null);
+                Integer assigneeId = tenantAccessRepository
+                        .findUserIdByEmail(effectiveCompanyId, assigneeEmail).orElse(null);
 
                 JiraIssue jiraIssue = jiraIssueRepository.findByCompanyIdAndJiraKey(effectiveCompanyId, jiraKey)
                         .orElseGet(() -> new JiraIssue(effectiveCompanyId, projectId, jiraKey, summary, issueType, priority,
                                 status, storyPoints, assigneeId));
 
+                jiraIssue.setProjectId(projectId);
                 jiraIssue.setSummary(summary);
                 jiraIssue.setIssueType(issueType);
                 jiraIssue.setPriority(priority);

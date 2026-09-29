@@ -46,4 +46,30 @@ public class TenantAccessRepository {
                 """, Integer.class, companyId, projectId);
         return count != null && count > 0;
     }
+
+    /** The internal project a Jira project key was linked to via Create/Edit Project, if any. */
+    public Optional<Integer> findProjectIdByJiraKey(Integer companyId, String jiraProjectKey) {
+        if (jiraProjectKey == null || jiraProjectKey.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query("""
+                SELECT project_id FROM projects WHERE company_id = ? AND jira_project_key = ?
+                """, (rs, rowNum) -> rs.getInt("project_id"), companyId, jiraProjectKey)
+                .stream().findFirst();
+    }
+
+    /**
+     * The DevPulse user whose email matches a Jira assignee's email address.
+     * Jira Cloud identifies assignees by an opaque accountId with no DevPulse
+     * equivalent, so email is the only reliable link between the two systems.
+     */
+    public Optional<Integer> findUserIdByEmail(Integer companyId, String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query("""
+                SELECT user_id FROM users WHERE company_id = ? AND lower(email) = lower(?)
+                """, (rs, rowNum) -> rs.getInt("user_id"), companyId, email)
+                .stream().findFirst();
+    }
 }
