@@ -1,6 +1,7 @@
 package com.devpulse.notification.controller;
 
 import com.devpulse.notification.entity.AlertRule;
+import com.devpulse.notification.service.AlertAccessService;
 import com.devpulse.notification.service.AlertRuleService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,17 +27,18 @@ class AlertRuleControllerTest {
     @MockBean
     private AlertRuleService alertRuleService;
 
-    // The tenant now arrives as the X-Company-Id header, which the gateway
-    // populates from validated JWT claims. It used to be a ?companyId= query
-    // parameter that any caller could set.
+    @MockBean
+    private AlertAccessService alertAccessService;
+
     private static final String COMPANY_HEADER = "X-Company-Id";
+    private static final String USER_HEADER = "X-User-Id";
 
     @Test
     void testGetRules() throws Exception {
         AlertRule rule = new AlertRule(1, 10, "stale_pr", 48, "#dev-alerts", 1);
         when(alertRuleService.getRulesByCompany(1)).thenReturn(List.of(rule));
 
-        mockMvc.perform(get("/alerts/rules").header(COMPANY_HEADER, "1"))
+        mockMvc.perform(get("/alerts/rules").header(COMPANY_HEADER, "1").header(USER_HEADER, "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].ruleType").value("stale_pr"));
     }
@@ -46,24 +48,19 @@ class AlertRuleControllerTest {
         AlertRule rule = new AlertRule(1, 10, "stale_pr", 48, "#dev-alerts", 1);
         when(alertRuleService.getRuleById(1, 1)).thenReturn(Optional.of(rule));
 
-        mockMvc.perform(get("/alerts/rules/1").header(COMPANY_HEADER, "1"))
+        mockMvc.perform(get("/alerts/rules/1").header(COMPANY_HEADER, "1").header(USER_HEADER, "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ruleType").value("stale_pr"));
     }
 
-    /**
-     * A rule that exists but belongs to another company must look exactly like
-     * one that does not exist — 404, never 403, so the id is not confirmed.
-     */
     @Test
     void testGetRuleByIdFromAnotherCompanyReturns404() throws Exception {
         when(alertRuleService.getRuleById(1, 99)).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/alerts/rules/1").header(COMPANY_HEADER, "99"))
+        mockMvc.perform(get("/alerts/rules/1").header(COMPANY_HEADER, "99").header(USER_HEADER, "1"))
                 .andExpect(status().isNotFound());
     }
 
-    /** Without the gateway-supplied header there is no tenant to scope to. */
     @Test
     void testGetRulesWithoutCompanyHeaderIsRejected() throws Exception {
         mockMvc.perform(get("/alerts/rules"))
@@ -88,6 +85,7 @@ class AlertRuleControllerTest {
 
         mockMvc.perform(post("/alerts/rules")
                         .header(COMPANY_HEADER, "1")
+                        .header(USER_HEADER, "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonBody))
                 .andExpect(status().isCreated())
@@ -98,7 +96,7 @@ class AlertRuleControllerTest {
     void testDeleteRuleFromAnotherCompanyReturns404() throws Exception {
         when(alertRuleService.deleteRule(1, 99)).thenReturn(false);
 
-        mockMvc.perform(delete("/alerts/rules/1").header(COMPANY_HEADER, "99"))
+        mockMvc.perform(delete("/alerts/rules/1").header(COMPANY_HEADER, "99").header(USER_HEADER, "1"))
                 .andExpect(status().isNotFound());
     }
 }
