@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class GithubIdentityService {
     @Value("${github.redirect-uri:http://localhost:3000/auth/github/callback}")
     private String redirectUri;
 
+    @Autowired
     public GithubIdentityService(UserRepository userRepository, GithubUserLookup githubUserLookup) {
         this(userRepository, githubUserLookup, null);
     }
