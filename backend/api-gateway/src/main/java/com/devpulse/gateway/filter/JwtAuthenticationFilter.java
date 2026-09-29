@@ -26,11 +26,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
-    // Paths that don't need JWT — public endpoints, webhooks, and OAuth install/callback flows
+    // Paths that don't need JWT - public endpoints, webhooks, and OAuth install/callback flows
     private static final Set<String> PUBLIC_PATH_PREFIXES = Set.of(
             "/api/auth/register",
             "/api/auth/login",
             "/api/auth/refresh",
+            "/api/auth/me/github/callback",        // GitHub OAuth callback
             "/api/webhooks/",                       // GitHub / Jira webhooks use HMAC, not JWT
             "/api/integrations/jira/oauth/",        // Atlassian OAuth install & callback
             "/api/slack/oauth/",                    // Slack OAuth install & callback
@@ -38,7 +39,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             "/actuator/info"
     );
 
-    // Gateway-owned identity headers — never accepted from a client.
+    // Gateway-owned identity headers - never accepted from a client.
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String COMPANY_ID_HEADER = "X-Company-Id";
 
@@ -47,14 +48,15 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     public JwtAuthenticationFilter(JwtService jwtService) {
         this.jwtService = jwtService;
     }
-        @Override
+
+    @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
 
         // Identity headers are set by this gateway and by nothing else. Drop whatever the
         // client sent before any forwarding decision, so a forged X-User-Id can never reach
-        // a downstream service — public paths included.
+        // a downstream service - public paths included.
         ServerHttpRequest.Builder forwarded = request.mutate()
                 .headers(headers -> {
                     headers.remove(USER_ID_HEADER);
@@ -110,18 +112,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
-    /**
-     * Signals a 401 as an error on the reactive chain rather than completing the response
-     * here, so GlobalExceptionHandler renders it in the same JSON shape as every other
-     * gateway error. The reason is logged by that handler, never sent to the caller.
-     */
     private Mono<Void> unauthorized(String reason) {
         return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, reason));
     }
 
     @Override
     public int getOrder() {
-        // Run before the routing filter (order -1 in Spring Cloud Gateway)
         return -100;
     }
 }

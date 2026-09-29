@@ -19,13 +19,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Spring Security configuration for the auth-service.
- * <ul>
- *   <li>Stateless sessions (JWT, no cookies)</li>
- *   <li>CSRF disabled (API-only service)</li>
- *   <li>{@code /auth/register} and {@code /auth/login} are public</li>
- *   <li>All other endpoints require a valid JWT</li>
- *   <li>{@code @PreAuthorize} annotations enabled for method-level RBAC</li>
- * </ul>
  */
 @Configuration
 @EnableWebSecurity
@@ -51,6 +44,7 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/auth/register",
                     "/auth/login",
+                    "/auth/me/github/callback",
                     "/actuator/health",
                     "/actuator/info"
                 ).permitAll()
