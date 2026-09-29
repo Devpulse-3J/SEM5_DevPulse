@@ -104,6 +104,24 @@ Table jira_issues {
   }
 }
 
+// Owned by integration-service, not the `integrations` table above (that one
+// is auth-service's) — same shape of data, scoped to the jira provider only,
+// so integration-service can persist its own OAuth connection without
+// writing a table it doesn't own.
+Table jira_connections {
+  connection_id        integer [pk, increment]
+  company_id           integer [not null, unique, ref: > companies.company_id]
+  cloud_id             varchar(128) [not null]
+  site_url             varchar(500)
+  site_name            varchar(255)
+  access_token         text [not null]
+  refresh_token        text
+  connected_by_user_id integer [ref: > users.user_id]
+  connected_at         timestamptz [not null, default: `now()`]
+  updated_at           timestamptz [not null, default: `now()`]
+  is_active            boolean [not null, default: true]
+}
+
 Table raw_event_log {
   event_id         integer [pk, increment]
   company_id       integer [not null, ref: > companies.company_id]

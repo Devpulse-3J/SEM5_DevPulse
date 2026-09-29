@@ -10,6 +10,7 @@ import com.devpulse.integration.jira.JiraSignatureValidator;
 import com.devpulse.integration.repository.JiraIssueRepository;
 import com.devpulse.integration.repository.RawEventLogRepository;
 import com.devpulse.integration.repository.RepoRepository;
+import com.devpulse.integration.repository.TenantAccessRepository;
 import com.devpulse.integration.service.EventPublisherService;
 import com.devpulse.integration.service.WebhookEventNormalizer;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +27,7 @@ public class WebhookControllerTest {
     private RawEventLogRepository rawEventLogRepository;
     private RepoRepository repoRepository;
     private JiraIssueRepository jiraIssueRepository;
+    private TenantAccessRepository tenantAccessRepository;
     private GithubSignatureValidator stubGithubValidator;
     private JiraSignatureValidator stubJiraValidator;
     private WebhookEventNormalizer normalizer;
@@ -39,6 +41,7 @@ public class WebhookControllerTest {
         rawEventLogRepository = mock(RawEventLogRepository.class);
         repoRepository = mock(RepoRepository.class);
         jiraIssueRepository = mock(JiraIssueRepository.class);
+        tenantAccessRepository = mock(TenantAccessRepository.class);
         eventPublisherService = mock(EventPublisherService.class);
         normalizer = new WebhookEventNormalizer(new ObjectMapper());
 
@@ -64,7 +67,8 @@ public class WebhookControllerTest {
                 stubJiraValidator,
                 normalizer,
                 eventPublisherService,
-                new ObjectMapper()
+                new ObjectMapper(),
+                tenantAccessRepository
         );
     }
 
