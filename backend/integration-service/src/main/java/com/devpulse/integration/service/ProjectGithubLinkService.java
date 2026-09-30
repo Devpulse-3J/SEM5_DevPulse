@@ -93,6 +93,18 @@ public class ProjectGithubLinkService {
                         coordinates.repo(), coordinates.owner(),
                         coordinates.fullName(), defaultBranch));
 
+        // The mirror image of the conflictingRepo check above: that one refuses
+        // to swap a PROJECT's repo, this refuses to silently steal a REPO away
+        // from whatever project it's already attached to. Without it, linking
+        // this repo to a second project reattributes the first project's
+        // already-ingested PRs/commits/deployments (all keyed off
+        // repos.project_id) to the new project with no warning.
+        if (repo.getProjectId() != null && !repo.getProjectId().equals(projectId)) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    coordinates.fullName() + " is already linked to project " + repo.getProjectId()
+                            + ". Unlink it from that project before linking it here.");
+        }
+
         // A repo row may already exist from a webhook delivery, where
         // project_id is left null. Linking is how it gets attached.
         repo.setProjectId(projectId);
