@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -177,7 +178,13 @@ public class WebhookEventNormalizer {
         JsonNode jobNode = root.path("workflow_job");
         // Every job in the CD workflow (test, build-and-push, deploy) fires this
         // event; only the job that actually deploys should become a deployment.
-        if (!"Deploy to EC2".equalsIgnoreCase(jobNode.path("name").asText(""))) {
+        // workflow_job.name is the job's own name (its YAML key unless overridden
+        // with a job-level `name:`) — it has no visibility into step names, so a
+        // step called "Deploy to EC2" inside a job called "deploy" reports as
+        // "deploy" here, never as its step name. Matching by substring instead of
+        // an exact name also means this keeps working if a differently-named repo
+        // (or job) is linked later, without hardcoding one literal name per repo.
+        if (!jobNode.path("name").asText("").toLowerCase(Locale.ROOT).contains("deploy")) {
             return null;
         }
 
