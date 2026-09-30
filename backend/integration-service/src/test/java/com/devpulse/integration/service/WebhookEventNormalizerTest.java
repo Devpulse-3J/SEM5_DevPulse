@@ -138,6 +138,22 @@ class WebhookEventNormalizerTest {
     }
 
     @Test
+    void testWorkflowJobNamedJustDeployBecomesADeploymentCreatedEvent() {
+        // workflow_job.name is the job's own name (its YAML key, absent a
+        // job-level `name:` override) — GitHub never exposes step names like
+        // "Deploy to EC2" through this event. A job with no name override,
+        // declared as `deploy:` in the workflow YAML, reports its name as
+        // literally "deploy" — this is what DevPulse's real CD workflows send.
+        String json = workflowJobJson("completed", "deploy", "success");
+
+        BaseEvent event = normalizer.normalize("github", "workflow_job", 1, json);
+
+        assertNotNull(event);
+        assertInstanceOf(DeploymentCreatedEvent.class, event);
+        assertEquals("success", ((DeploymentCreatedEvent) event).getStatus());
+    }
+
+    @Test
     void testWorkflowJobForADifferentJobIsIgnored() {
         // "test" and "build-and-push" also fire this event; only "Deploy to EC2" deployed anything.
         String json = workflowJobJson("completed", "Test gate", "success");
