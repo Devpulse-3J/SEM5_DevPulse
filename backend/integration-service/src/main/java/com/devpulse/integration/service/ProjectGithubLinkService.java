@@ -6,6 +6,7 @@ import com.devpulse.integration.dto.LinkGithubRequest;
 import com.devpulse.integration.dto.LinkGithubResponse;
 import com.devpulse.integration.entity.Repo;
 import com.devpulse.integration.exception.ApiException;
+import com.devpulse.integration.github.GithubAppClient;
 import com.devpulse.integration.github.GithubRepoUrlParser;
 import com.devpulse.integration.github.GithubRepoUrlParser.GithubRepoCoordinates;
 import com.devpulse.integration.repository.RepoRepository;
@@ -41,20 +42,31 @@ public class ProjectGithubLinkService {
     private final GithubApiClient githubApiClient;
     private final ProjectAccessService projectAccessService;
     private final GithubHistoricalSyncService githubHistoricalSyncService;
+    private final GithubInstallationService installationService;
     private final String webhookCallbackUrl;
+    private final String appSlug;
 
     public ProjectGithubLinkService(
             RepoRepository repoRepository,
             GithubApiClient githubApiClient,
             ProjectAccessService projectAccessService,
             GithubHistoricalSyncService githubHistoricalSyncService,
-            @Value("${devpulse.public-base-url:http://localhost:8080}") String publicBaseUrl) {
+            GithubInstallationService installationService,
+            @Value("${devpulse.public-base-url:http://localhost:8080}") String publicBaseUrl,
+            @Value("${github.app.slug:odineye-integrator-v2}") String appSlug) {
         this.repoRepository = repoRepository;
         this.githubApiClient = githubApiClient;
         this.projectAccessService = projectAccessService;
         this.githubHistoricalSyncService = githubHistoricalSyncService;
+        this.installationService = installationService;
         this.webhookCallbackUrl =
                 publicBaseUrl.replaceAll("/+$", "") + "/api/webhooks/github";
+        this.appSlug = appSlug;
+    }
+
+    /** Where the admin installs the GitHub App; state carries the project back to the Setup URL. */
+    public String connectUrl(Integer projectId) {
+        return "https://github.com/apps/" + appSlug + "/installations/new?state=" + projectId;
     }
 
     @Transactional
@@ -68,8 +80,18 @@ public class ProjectGithubLinkService {
                                 + "like https://github.com/owner/repo"));
 
         // One call: both the id and the default branch come from this response.
+        // Unauthenticated works for public repos; a private one is only readable
+        // through an App installation the company has that covers it.
         JsonNode repoData = githubApiClient
                 .fetchRepositoryDetails(coordinates.owner(), coordinates.repo());
+        if (repoData.path("id").asLong(0L) <= 0) {
+            Optional<String> installationToken =
+                    installationService.tokenForRepository(context.companyId(), coordinates.fullName());
+            if (installationToken.isPresent()) {
+                repoData = githubApiClient.fetchRepositoryDetails(
+                        coordinates.owner(), coordinates.repo(), installationToken.get());
+            }
+        }
         long githubRepoId = requireGithubRepoId(repoData, coordinates);
         String defaultBranch = repoData.path("default_branch").asText("main");
 
@@ -92,6 +114,18 @@ public class ProjectGithubLinkService {
                         context.companyId(), projectId, githubRepoId,
                         coordinates.repo(), coordinates.owner(),
                         coordinates.fullName(), defaultBranch));
+
+        // The mirror image of the conflictingRepo check above: that one refuses
+        // to swap a PROJECT's repo, this refuses to silently steal a REPO away
+        // from whatever project it's already attached to. Without it, linking
+        // this repo to a second project reattributes the first project's
+        // already-ingested PRs/commits/deployments (all keyed off
+        // repos.project_id) to the new project with no warning.
+        if (repo.getProjectId() != null && !repo.getProjectId().equals(projectId)) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    coordinates.fullName() + " is already linked to project " + repo.getProjectId()
+                            + ". Unlink it from that project before linking it here.");
+        }
 
         // A repo row may already exist from a webhook delivery, where
         // project_id is left null. Linking is how it gets attached.
@@ -167,13 +201,12 @@ public class ProjectGithubLinkService {
 
     @Transactional(readOnly = true)
     public Map<String, String> getConnectInfo(RequestContext context, Integer projectId) {
-        String appName = System.getenv().getOrDefault("GITHUB_APP_NAME", "DevPulseIntegration");
         Optional<Repo> linked = repoRepository
                 .findByCompanyIdAndProjectId(context.companyId(), projectId)
                 .stream().findFirst();
 
         Map<String, String> info = new HashMap<>();
-        info.put("connectUrl", "https://github.com/apps/" + appName + "/installations/new?state=" + projectId);
+        info.put("connectUrl", connectUrl(projectId));
 
         if (linked.isPresent()) {
             Repo repo = linked.get();
@@ -185,33 +218,46 @@ public class ProjectGithubLinkService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getAvailableRepositories(RequestContext context, Integer projectId) {
-        String appName = System.getenv().getOrDefault("GITHUB_APP_NAME", "DevPulseIntegration");
-        String connectUrl = "https://github.com/apps/" + appName + "/installations/new?state=" + projectId;
-
         Map<String, Object> response = new HashMap<>();
-        response.put("connectUrl", connectUrl);
+        response.put("connectUrl", connectUrl(projectId));
 
         List<Map<String, Object>> reposList = new ArrayList<>();
         Map<String, Map<String, Object>> repoMap = new LinkedHashMap<>();
 
-        try {
-            JsonNode githubRepos = githubApiClient.fetchUserRepositories();
-            if (githubRepos != null && githubRepos.isArray()) {
-                for (JsonNode rNode : githubRepos) {
-                    String fullName = rNode.path("full_name").asText(null);
-                    String htmlUrl = rNode.path("html_url").asText(null);
-                    if (fullName != null && htmlUrl != null) {
-                        Map<String, Object> rItem = new HashMap<>();
-                        rItem.put("id", rNode.path("id").asLong(0L));
-                        rItem.put("name", rNode.path("name").asText(""));
-                        rItem.put("fullName", fullName);
-                        rItem.put("repoUrl", htmlUrl);
-                        repoMap.put(fullName.toLowerCase(), rItem);
+        // Preferred source: exactly the repositories the admin granted when
+        // installing the GitHub App. The personal-token listing below is only a
+        // fallback for when no installation exists; it shows the token owner's
+        // repos, not the company's.
+        boolean installed = installationService.hasInstallation(context.companyId());
+        if (installed) {
+            for (GithubAppClient.InstallationRepo repo : installationService.listRepositories(context.companyId())) {
+                Map<String, Object> rItem = new HashMap<>();
+                rItem.put("id", repo.id());
+                rItem.put("name", repo.name());
+                rItem.put("fullName", repo.fullName());
+                rItem.put("repoUrl", repo.htmlUrl());
+                repoMap.put(repo.fullName().toLowerCase(), rItem);
+            }
+        } else {
+            try {
+                JsonNode githubRepos = githubApiClient.fetchUserRepositories();
+                if (githubRepos != null && githubRepos.isArray()) {
+                    for (JsonNode rNode : githubRepos) {
+                        String fullName = rNode.path("full_name").asText(null);
+                        String htmlUrl = rNode.path("html_url").asText(null);
+                        if (fullName != null && htmlUrl != null) {
+                            Map<String, Object> rItem = new HashMap<>();
+                            rItem.put("id", rNode.path("id").asLong(0L));
+                            rItem.put("name", rNode.path("name").asText(""));
+                            rItem.put("fullName", fullName);
+                            rItem.put("repoUrl", htmlUrl);
+                            repoMap.put(fullName.toLowerCase(), rItem);
+                        }
                     }
                 }
+            } catch (Exception e) {
+                log.warn("Failed to fetch user repositories from GitHub API: {}", e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("Failed to fetch user repositories from GitHub API: {}", e.getMessage());
         }
 
         try {
@@ -231,7 +277,7 @@ public class ProjectGithubLinkService {
         }
 
         reposList.addAll(repoMap.values());
-        response.put("installed", !reposList.isEmpty());
+        response.put("installed", installed || !reposList.isEmpty());
         response.put("repositories", reposList);
 
         return response;

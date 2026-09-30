@@ -43,10 +43,12 @@ github:
     # against a value that is published in this file.
     secret: ${GITHUB_WEBHOOK_SECRET}
   app:
-    # All GitHub App credentials come from the environment. They were previously
-    # committed here as literal defaults; those values are compromised and must
-    # be rotated in the GitHub App settings.
+    # The GitHub App that grants repository access. Only the App ID and private
+    # key are needed (App JWT -> installation token). Deliberately NOT read from
+    # GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET: those belong to auth-service's
+    # separate OAuth App for sign-in, and sharing names is how they got mixed up.
     id: ${GITHUB_APP_ID:}
-    client-id: ${GITHUB_CLIENT_ID:}
-    client-secret: ${GITHUB_CLIENT_SECRET:}
-    private-key-path: ${GITHUB_PRIVATE_KEY_PATH:classpath:github-private-key.pem}
+    # URL slug, e.g. github.com/apps/<slug>. Env var kept as GITHUB_APP_NAME.
+    slug: ${GITHUB_APP_NAME:odineye-integrator-v2}
+    # Base64 of the whole .pem file (single line), e.g. `base64 -w0 key.pem`.
+    private-key-base64: ${GITHUB_APP_PRIVATE_KEY_BASE64:}
