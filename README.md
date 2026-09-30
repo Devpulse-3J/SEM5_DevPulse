@@ -652,6 +652,9 @@ Each service reads configuration from environment variables. The table below lis
 | `JWT_SECRET` | auth-service, api-gateway | Signing/validation key for JWTs |
 | `JWT_EXPIRATION` | auth-service | Access token lifetime |
 | `GITHUB_WEBHOOK_SECRET` | integration-service | HMAC secret to verify GitHub webhook signatures |
+| `GITHUB_APP_ID` / `GITHUB_APP_NAME` | integration-service | GitHub App (repository access) ID and URL slug |
+| `GITHUB_APP_PRIVATE_KEY_BASE64` | integration-service | Base64 of the GitHub App's `.pem` private key, used to mint installation tokens |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_REDIRECT_URI` | auth-service | Separate GitHub OAuth App for sign-in and account linking — not the GitHub App above |
 | `JIRA_WEBHOOK_SECRET` | integration-service | Secret to verify Jira webhook payloads |
 | `JIRA_BASE_URL` | integration-service | Base URL of the connected Jira instance |
 | `JIRA_API_TOKEN` / `JIRA_EMAIL` | integration-service | Jira API credentials |

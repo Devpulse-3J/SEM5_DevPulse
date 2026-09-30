@@ -1,10 +1,13 @@
 package com.devpulse.integration.controller;
 
+import com.devpulse.integration.dto.ClaimGithubInstallationRequest;
 import com.devpulse.integration.dto.GithubStatusResponse;
 import com.devpulse.integration.dto.LinkGithubRequest;
 import com.devpulse.integration.dto.LinkGithubResponse;
+import com.devpulse.integration.entity.GithubInstallation;
 import com.devpulse.integration.security.RequestContext;
 import com.devpulse.integration.security.RequestContextResolver;
+import com.devpulse.integration.service.GithubInstallationService;
 import com.devpulse.integration.service.ProjectGithubLinkService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -40,11 +43,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProjectGithubController {
 
     private final ProjectGithubLinkService projectGithubLinkService;
+    private final GithubInstallationService githubInstallationService;
     private final RequestContextResolver contextResolver;
 
     public ProjectGithubController(ProjectGithubLinkService projectGithubLinkService,
+                                   GithubInstallationService githubInstallationService,
                                    RequestContextResolver contextResolver) {
         this.projectGithubLinkService = projectGithubLinkService;
+        this.githubInstallationService = githubInstallationService;
         this.contextResolver = contextResolver;
     }
 
@@ -79,14 +85,33 @@ public class ProjectGithubController {
         return ResponseEntity.accepted().body(projectGithubLinkService.sync(context, projectId));
     }
 
+    /**
+     * Records the GitHub App installation GitHub redirected back with, so the
+     * repository dropdown can list the repos it was granted.
+     * Body: {@code { "installationId": 12345 }}.
+     */
+    @PostMapping("/installation")
+    public ResponseEntity<Map<String, Object>> claimInstallation(
+            HttpServletRequest servletRequest,
+            @PathVariable("projectId") Integer projectId,
+            @Valid @RequestBody ClaimGithubInstallationRequest request) {
+        RequestContext context = contextResolver.resolve(servletRequest);
+        GithubInstallation installation =
+                githubInstallationService.claim(context, projectId, request.getInstallationId());
+        Map<String, Object> body = new HashMap<>();
+        body.put("installationId", installation.getInstallationId());
+        body.put("accountLogin", installation.getAccountLogin());
+        body.put("accountType", installation.getAccountType());
+        return ResponseEntity.ok(body);
+    }
+
     /** Returns GitHub App OAuth / installation connect URL & direct repository details. */
     @GetMapping("/connect-url")
     public ResponseEntity<Map<String, String>> getConnectUrl(
             HttpServletRequest servletRequest,
             @PathVariable("projectId") Integer projectId) {
-        String appName = System.getenv().getOrDefault("GITHUB_APP_NAME", "DevPulseIntegration");
         Map<String, String> info = new HashMap<>();
-        info.put("connectUrl", "https://github.com/apps/" + appName + "/installations/new?state=" + projectId);
+        info.put("connectUrl", projectGithubLinkService.connectUrl(projectId));
 
         try {
             RequestContext context = contextResolver.resolve(servletRequest);

@@ -127,6 +127,20 @@ Table jira_connections {
   is_active            boolean [not null, default: true]
 }
 
+// Owned by integration-service. A GitHub App installation and the company that
+// claimed it (first claim wins, enforced by the primary key).
+Table github_installations {
+  installation_id bigint [pk]
+  company_id      integer [not null, ref: > companies.company_id]
+  account_login   varchar(255)
+  account_type    varchar(50)
+  created_at      timestamptz [not null, default: `now()`]
+  updated_at      timestamptz [not null, default: `now()`]
+  Indexes {
+    company_id
+  }
+}
+
 Table raw_event_log {
   event_id         integer [pk, increment]
   company_id       integer [not null, ref: > companies.company_id]

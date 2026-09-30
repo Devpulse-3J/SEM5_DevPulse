@@ -53,6 +53,12 @@ public class GithubApiClient {
         return executeGetRequest(url);
     }
 
+    /** Same as {@link #fetchRepositoryDetails(String, String)} but authenticated with the given token (e.g. a GitHub App installation token). */
+    public JsonNode fetchRepositoryDetails(String owner, String repo, String accessToken) {
+        String url = String.format("%s/repos/%s/%s", baseUrl, owner, repo);
+        return executeGetRequest(url, accessToken);
+    }
+
     /**
      * Fetches pull requests for a repository.
      * GET /repos/{owner}/{repo}/pulls?state={state}&per_page=100
@@ -104,16 +110,20 @@ public class GithubApiClient {
     }
 
     private JsonNode executeGetRequest(String url) {
+        return executeGetRequest(url, githubToken);
+    }
+
+    private JsonNode executeGetRequest(String url, String token) {
         log.info("Executing GitHub REST API GET request to: {}", url);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Accept", "application/vnd.github+json");
         headers.set("User-Agent", "DevPulse-Integration-Service");
 
-        if (githubToken != null && !githubToken.isBlank()) {
-            String authHeader = githubToken.startsWith("Bearer ") || githubToken.startsWith("token ")
-                    ? githubToken
-                    : "Bearer " + githubToken;
+        if (token != null && !token.isBlank()) {
+            String authHeader = token.startsWith("Bearer ") || token.startsWith("token ")
+                    ? token
+                    : "Bearer " + token;
             headers.set("Authorization", authHeader);
         } else {
             log.warn("No GitHub token configured. Unauthenticated requests to GitHub API are rate-limited to 60 req/hr.");

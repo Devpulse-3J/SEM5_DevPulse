@@ -36,9 +36,6 @@ public class JiraCloudClient {
     @Value("${ATLASSIAN_CLIENT_SECRET:}")
     private String clientSecret;
 
-    // Built directly rather than injected: this service has no @Bean RestTemplate
-    // anywhere (JiraOAuthController falls back to `new RestTemplate()` for the
-    // same reason), and Spring Boot does not auto-configure one on its own.
     public JiraCloudClient(ObjectMapper objectMapper) {
         this.restTemplate = new RestTemplate();
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();

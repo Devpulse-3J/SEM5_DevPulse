@@ -192,7 +192,8 @@ services:
       <<: [ *postgres-env, *postgres-url, *rabbitmq-url, *java-env ]
       SERVER_PORT: 8082
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
-      GITHUB_APP_NAME: ${GITHUB_APP_NAME:-DevPulseIntegration}
+      GITHUB_APP_NAME: ${GITHUB_APP_NAME:-odineye-integrator-v2}
+      GITHUB_APP_PRIVATE_KEY_BASE64: ${GITHUB_APP_PRIVATE_KEY_BASE64:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-devpulse-integration-service}
       # Read access for api.github.com. Without it GithubApiClient is
       # unauthenticated: 60 requests/hour, private repos come back 404 (surfacing
