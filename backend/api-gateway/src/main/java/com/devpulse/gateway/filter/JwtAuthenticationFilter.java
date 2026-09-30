@@ -31,6 +31,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/register",
             "/api/auth/login",
             "/api/auth/refresh",
+            "/api/auth/github/",                   // GitHub OAuth login & callback
             "/api/auth/me/github/connect",         // GitHub OAuth connect URL
             "/api/auth/me/github/callback",        // GitHub OAuth callback
             "/api/webhooks/",                       // GitHub / Jira webhooks use HMAC, not JWT

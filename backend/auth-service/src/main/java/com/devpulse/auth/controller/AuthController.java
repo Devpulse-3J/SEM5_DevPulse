@@ -1,12 +1,18 @@
 package com.devpulse.auth.controller;
 
 import com.devpulse.auth.dto.AuthResponse;
+import com.devpulse.auth.dto.GithubLoginRequest;
 import com.devpulse.auth.dto.LoginRequest;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.dto.UserProfileResponse;
 import com.devpulse.auth.entity.User;
 import com.devpulse.auth.service.AuthService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -24,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>{@code POST /auth/register} — create a new account (public)</li>
  *   <li>{@code POST /auth/login} — obtain a JWT (public)</li>
+ *   <li>{@code POST /auth/github/login} — sign up or log in with GitHub OAuth code (public)</li>
  *   <li>{@code GET  /auth/me} — retrieve the authenticated user's profile (requires JWT)</li>
  * </ul>
  */
@@ -32,6 +40,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+
+    @Value("${devpulse.frontend.base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
 
     public AuthController(AuthService authService) {
         this.authService = authService;
@@ -55,6 +66,47 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Authenticates or registers a user via GitHub OAuth code and returns a JWT.
+     */
+    @PostMapping("/github/login")
+    public ResponseEntity<AuthResponse> loginWithGithub(
+            @Valid @RequestBody GithubLoginRequest request) {
+        AuthResponse response = authService.loginWithGithub(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Alias endpoint supporting POST /auth/github/callback.
+     */
+    @PostMapping("/github/callback")
+    public ResponseEntity<AuthResponse> callbackWithGithub(
+            @Valid @RequestBody GithubLoginRequest request) {
+        AuthResponse response = authService.loginWithGithub(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Redirects browser to frontend OAuth callback page if hit directly via GET.
+     */
+    @GetMapping("/github/callback")
+    public void callbackWithGithubGet(
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String error,
+            @RequestParam(required = false) String state,
+            HttpServletResponse httpResponse) throws IOException {
+        StringBuilder redirect = new StringBuilder(frontendBaseUrl).append("/auth/github/callback?");
+        if (error != null) {
+            redirect.append("error=").append(URLEncoder.encode(error, StandardCharsets.UTF_8));
+        } else if (code != null) {
+            redirect.append("code=").append(URLEncoder.encode(code, StandardCharsets.UTF_8));
+        }
+        if (state != null) {
+            redirect.append("&state=").append(URLEncoder.encode(state, StandardCharsets.UTF_8));
+        }
+        httpResponse.sendRedirect(redirect.toString());
     }
 
     /**

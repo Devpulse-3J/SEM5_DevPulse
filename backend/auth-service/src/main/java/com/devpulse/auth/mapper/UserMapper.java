@@ -35,7 +35,7 @@ public class UserMapper {
      */
     public AuthResponse toAuthResponse(User user, String token, long expiresIn,
                                         Integer companyId, String roleInCompany) {
-        return new AuthResponse(
+        AuthResponse response = new AuthResponse(
                 token,
                 expiresIn,
                 user.getUserId(),
@@ -44,6 +44,11 @@ public class UserMapper {
                 roleInCompany,
                 companyId
         );
+        response.setAvatarUrl(user.getAvatarUrl());
+        response.setGithubId(user.getGithubId());
+        response.setGithubUsername(user.getGithubUsername());
+        response.setAuthProvider(user.getAuthProvider());
+        return response;
     }
 
     /**
@@ -75,6 +80,8 @@ public class UserMapper {
         profile.setCompanies(companies);
         profile.setGithubId(user.getGithubId());
         profile.setGithubUsername(user.getGithubUsername());
+        profile.setAvatarUrl(user.getAvatarUrl());
+        profile.setAuthProvider(user.getAuthProvider());
 
         return profile;
     }

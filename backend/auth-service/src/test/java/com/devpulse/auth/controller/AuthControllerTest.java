@@ -263,4 +263,64 @@ class AuthControllerTest {
         mockMvc.perform(get("/auth/me/github/lookup").param("username", "octocat"))
                 .andExpect(status().is4xxClientError());
     }
+
+    // ---- /auth/github/login (public GitHub OAuth login / sign up) ------------
+
+    @Test
+    void githubLoginReturnsTokenWithoutRequiringAuth() throws Exception {
+        AuthResponse response = new AuthResponse("github-jwt-token", 3600L, 42,
+                "octocat@github.com", "The Octocat", "member", null);
+        when(authService.loginWithGithub(any())).thenReturn(response);
+
+        mockMvc.perform(post("/auth/github/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"valid-oauth-code\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("github-jwt-token"))
+                .andExpect(jsonPath("$.email").value("octocat@github.com"))
+                .andExpect(jsonPath("$.fullName").value("The Octocat"))
+                .andExpect(jsonPath("$.systemRole").value("member"));
+    }
+
+    @Test
+    void githubLoginRejectsBlankCode() throws Exception {
+        mockMvc.perform(post("/auth/github/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void githubLoginAcceptsInviteToken() throws Exception {
+        AuthResponse response = new AuthResponse("github-jwt-token", 3600L, 42,
+                "octocat@github.com", "The Octocat", "member", 7);
+        when(authService.loginWithGithub(any())).thenReturn(response);
+
+        mockMvc.perform(post("/auth/github/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"oauth-code\",\"inviteToken\":\"inv-789\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companyId").value(7));
+    }
+
+    @Test
+    void githubCallbackPostReturnsToken() throws Exception {
+        AuthResponse response = new AuthResponse("github-jwt-token", 3600L, 42,
+                "octocat@github.com", "The Octocat", "member", null);
+        when(authService.loginWithGithub(any())).thenReturn(response);
+
+        mockMvc.perform(post("/auth/github/callback")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"valid-oauth-code\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("github-jwt-token"));
+    }
+
+    @Test
+    void githubCallbackGetRedirectsToFrontend() throws Exception {
+        mockMvc.perform(get("/auth/github/callback")
+                        .param("code", "gh-code-123")
+                        .param("state", "login-state"))
+                .andExpect(status().is3xxRedirection());
+    }
 }

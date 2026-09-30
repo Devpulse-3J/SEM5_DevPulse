@@ -20,6 +20,8 @@ public class UserProfileResponse {
     /** The linked GitHub account's numeric id, or null when none is linked. */
     private Long githubId;
     private String githubUsername;
+    private String avatarUrl;
+    private String authProvider;
 
     // -- constructors --------------------------------------------------------
 
@@ -210,11 +212,35 @@ public class UserProfileResponse {
         this.githubId = githubId;
     }
 
+    public Long getGithubUserId() {
+        return githubId;
+    }
+
+    public void setGithubUserId(Long githubUserId) {
+        this.githubId = githubUserId;
+    }
+
     public String getGithubUsername() {
         return githubUsername;
     }
 
     public void setGithubUsername(String githubUsername) {
         this.githubUsername = githubUsername;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public String getAuthProvider() {
+        return authProvider;
+    }
+
+    public void setAuthProvider(String authProvider) {
+        this.authProvider = authProvider;
     }
 }

@@ -35,7 +35,15 @@ public class AuthorRelinkService {
         accessService.requireCompanyAccess(context);
 
         int linked = relinkRepository.findGithubId(context.userId())
-                .map(githubId -> relinkRepository.relinkPullRequests(context.companyId(), context.userId(), githubId))
+                .map(githubId -> {
+                    int prs = relinkRepository.relinkPullRequests(context.companyId(), context.userId(), githubId);
+                    int commits = relinkRepository.relinkCommits(context.companyId(), context.userId(), githubId);
+                    if (commits > 0) {
+                        log.info("Attributed {} earlier commit(s) to user {} in company {}",
+                                commits, context.userId(), context.companyId());
+                    }
+                    return prs;
+                })
                 .orElse(0);
 
         if (linked > 0) {

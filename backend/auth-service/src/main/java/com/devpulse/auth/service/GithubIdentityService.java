@@ -1,5 +1,6 @@
 package com.devpulse.auth.service;
 
+import com.devpulse.auth.dto.GithubEmailInfo;
 import com.devpulse.auth.dto.GithubOAuthTokenResponse;
 import com.devpulse.auth.dto.GithubPreviewResponse;
 import com.devpulse.auth.dto.GithubStatusResponse;
@@ -13,6 +14,7 @@ import com.devpulse.auth.repository.UserRepository;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,22 +98,60 @@ public class GithubIdentityService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
 
+        GithubUserInfo userInfo = exchangeCodeAndFetchUserInfo(code);
+        Long githubId = userInfo.id();
+        String githubUsername = userInfo.login();
+
+        userRepository.findFirstByGithubId(githubId)
+                .filter(owner -> !owner.getUserId().equals(userId))
+                .ifPresent(owner -> {
+                    throw new ConflictException(
+                            "That GitHub account is already linked to another DevPulse user");
+                });
+
+        user.setGithubId(githubId);
+        user.setGithubUsername(githubUsername);
+        if (user.getAvatarUrl() == null && userInfo.avatarUrl() != null) {
+            user.setAvatarUrl(userInfo.avatarUrl());
+        }
+        userRepository.save(user);
+
+        log.info("User {} OAuth linked GitHub account {} (id {})", userId, githubUsername, githubId);
+        return new GithubStatusResponse(true, githubId, githubUsername);
+    }
+
+    /**
+     * Exchanges an OAuth authorization code for a GitHub access token, retrieves
+     * the user profile from GitHub, and ensures an email is resolved.
+     */
+    public GithubUserInfo exchangeCodeAndFetchUserInfo(String code) {
         if (code == null || code.isBlank()) {
             throw new IllegalArgumentException("Authorization code is required");
         }
 
         try {
+            Map<String, String> tokenPayload = new HashMap<>();
+            tokenPayload.put("client_id", clientId != null ? clientId : "");
+            tokenPayload.put("client_secret", clientSecret != null ? clientSecret : "");
+            tokenPayload.put("code", code.trim());
+            if (redirectUri != null && !redirectUri.isBlank()) {
+                tokenPayload.put("redirect_uri", redirectUri.trim());
+            }
+
             GithubOAuthTokenResponse tokenResponse = restClient.post()
                     .uri("https://github.com/login/oauth/access_token")
                     .header("Accept", "application/json")
-                    .body(Map.of(
-                            "client_id", clientId != null ? clientId : "",
-                            "client_secret", clientSecret != null ? clientSecret : "",
-                            "code", code,
-                            "redirect_uri", redirectUri != null ? redirectUri : ""
-                    ))
+                    .body(tokenPayload)
                     .retrieve()
                     .body(GithubOAuthTokenResponse.class);
+
+            if (tokenResponse != null && tokenResponse.error() != null) {
+                log.warn("GitHub OAuth token exchange failed: {} ({})",
+                        tokenResponse.error(), tokenResponse.errorDescription());
+                throw new ExternalServiceException(
+                        "GitHub OAuth error: " + (tokenResponse.errorDescription() != null ? tokenResponse.errorDescription() : tokenResponse.error()),
+                        null);
+            }
 
             String accessToken = tokenResponse != null ? tokenResponse.accessToken() : null;
             if (accessToken == null || accessToken.isBlank()) {
@@ -130,25 +170,53 @@ public class GithubIdentityService {
                 throw new ExternalServiceException("Failed to retrieve profile from GitHub", null);
             }
 
-            Long githubId = userInfo.id();
-            String githubUsername = userInfo.login();
+            String email = userInfo.email();
+            if (email == null || email.isBlank()) {
+                email = fetchPrimaryEmail(accessToken);
+            }
+            if (email == null || email.isBlank()) {
+                email = userInfo.login().toLowerCase() + "@users.noreply.github.com";
+            }
 
-            userRepository.findFirstByGithubId(githubId)
-                    .filter(owner -> !owner.getUserId().equals(userId))
-                    .ifPresent(owner -> {
-                        throw new ConflictException(
-                                "That GitHub account is already linked to another DevPulse user");
-                    });
-
-            user.setGithubId(githubId);
-            user.setGithubUsername(githubUsername);
-            userRepository.save(user);
-
-            log.info("User {} OAuth linked GitHub account {} (id {})", userId, githubUsername, githubId);
-            return new GithubStatusResponse(true, githubId, githubUsername);
+            return new GithubUserInfo(
+                    userInfo.id(),
+                    userInfo.login(),
+                    userInfo.name(),
+                    email,
+                    userInfo.avatarUrl()
+            );
         } catch (RestClientException e) {
             throw new ExternalServiceException("Failed to communicate with GitHub during OAuth exchange", e);
         }
+    }
+
+    private String fetchPrimaryEmail(String accessToken) {
+        try {
+            GithubEmailInfo[] emails = restClient.get()
+                    .uri("https://api.github.com/user/emails")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "devpulse-auth-service")
+                    .retrieve()
+                    .body(GithubEmailInfo[].class);
+
+            if (emails != null && emails.length > 0) {
+                for (GithubEmailInfo item : emails) {
+                    if (item.primary() && item.email() != null && !item.email().isBlank()) {
+                        return item.email().trim();
+                    }
+                }
+                for (GithubEmailInfo item : emails) {
+                    if (item.verified() && item.email() != null && !item.email().isBlank()) {
+                        return item.email().trim();
+                    }
+                }
+                return emails[0].email() != null ? emails[0].email().trim() : null;
+            }
+        } catch (Exception e) {
+            log.warn("Could not retrieve emails from GitHub: {}", e.getMessage());
+        }
+        return null;
     }
 
     @Transactional(readOnly = true)

@@ -63,9 +63,11 @@ public class AuthorRelinkServiceTest {
     public void alwaysScopesTheUpdateToTheCallersOwnCompanyAndUser() {
         when(repository.findGithubId(22)).thenReturn(Optional.of(1L));
         when(repository.relinkPullRequests(anyInt(), anyInt(), anyLong())).thenReturn(0);
+        when(repository.relinkCommits(anyInt(), anyInt(), anyLong())).thenReturn(2);
 
         service.relinkMyPullRequests(context);
 
         verify(repository).relinkPullRequests(15, 22, 1L);
+        verify(repository).relinkCommits(15, 22, 1L);
     }
 }

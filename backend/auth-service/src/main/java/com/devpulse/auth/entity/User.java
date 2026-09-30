@@ -44,7 +44,7 @@ public class User implements UserDetails {
     @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
 
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
     @Column(name = "system_role", nullable = false, length = 50)
@@ -55,6 +55,12 @@ public class User implements UserDetails {
 
     @Column(name = "github_username", length = 255)
     private String githubUsername;
+
+    @Column(name = "avatar_url", length = 512)
+    private String avatarUrl;
+
+    @Column(name = "auth_provider", nullable = false, length = 32)
+    private String authProvider = "LOCAL";
 
     @Column(name = "jira_account_id", length = 128)
     private String jiraAccountId;
@@ -202,6 +208,22 @@ public class User implements UserDetails {
 
     public void setGithubUsername(String githubUsername) {
         this.githubUsername = githubUsername;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public String getAuthProvider() {
+        return authProvider;
+    }
+
+    public void setAuthProvider(String authProvider) {
+        this.authProvider = authProvider;
     }
 
     public String getJiraAccountId() {

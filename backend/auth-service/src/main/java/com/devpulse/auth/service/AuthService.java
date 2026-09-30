@@ -28,6 +28,15 @@ public interface AuthService {
     AuthResponse login(LoginRequest request);
 
     /**
+     * Authenticates or signs up a user using a GitHub OAuth authorization code,
+     * and claims an invitation if an invite token is provided.
+     *
+     * @param request GitHub login request containing authorization code and optional invite token
+     * @return AuthResponse containing JWT token and user details
+     */
+    AuthResponse loginWithGithub(com.devpulse.auth.dto.GithubLoginRequest request);
+
+    /**
      * Retrieves the profile and all per-project roles for the specified user.
      *
      * @param userId ID of the user

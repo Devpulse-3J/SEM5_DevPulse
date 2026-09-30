@@ -132,4 +132,13 @@ class JwtAuthenticationFilterTest {
                 .exchange()
                 .expectStatus().isUnauthorized();
     }
+
+    @Test
+    void githubLoginRouteWithoutTokenIsAdmittedByTheFilter() {
+        webTestClient.post()
+                .uri("/api/auth/github/login")
+                .exchange()
+                .expectStatus().value(status ->
+                        assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
+    }
 }
