@@ -87,4 +87,4 @@ each task and observes without assisting unless the participant is fully stuck:
 
 - **Session length:** approximately 30–45 minutes per participant, one at a time.
 - **Timing:** scheduled for the final two weeks before submission. Results are not yet
-  available at the time of writing this report; they will be added once sessions complete. aadfjodjfojdfodjfo
+  available at the time of writing this report; they will be added once sessions complete. aadfjodjfojdfodjfo  testing new github app
