@@ -14,6 +14,10 @@ public class AuthResponse {
     private String fullName;
     private String systemRole;
     private Integer companyId;
+    private String avatarUrl;
+    private Long githubId;
+    private String githubUsername;
+    private String authProvider;
 
     // -- constructors --------------------------------------------------------
 
@@ -106,5 +110,45 @@ public class AuthResponse {
 
     public void setCompanyId(Integer companyId) {
         this.companyId = companyId;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public Long getGithubId() {
+        return githubId;
+    }
+
+    public void setGithubId(Long githubId) {
+        this.githubId = githubId;
+    }
+
+    public Long getGithubUserId() {
+        return githubId;
+    }
+
+    public void setGithubUserId(Long githubUserId) {
+        this.githubId = githubUserId;
+    }
+
+    public String getGithubUsername() {
+        return githubUsername;
+    }
+
+    public void setGithubUsername(String githubUsername) {
+        this.githubUsername = githubUsername;
+    }
+
+    public String getAuthProvider() {
+        return authProvider;
+    }
+
+    public void setAuthProvider(String authProvider) {
+        this.authProvider = authProvider;
     }
 }

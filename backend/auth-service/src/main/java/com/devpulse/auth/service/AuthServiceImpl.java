@@ -1,6 +1,8 @@
 package com.devpulse.auth.service;
 
 import com.devpulse.auth.dto.AuthResponse;
+import com.devpulse.auth.dto.GithubLoginRequest;
+import com.devpulse.auth.dto.GithubUserInfo;
 import com.devpulse.auth.dto.LoginRequest;
 import com.devpulse.auth.dto.RegisterRequest;
 import com.devpulse.auth.dto.UserProfileResponse;
@@ -11,6 +13,7 @@ import com.devpulse.auth.entity.ProjectInvitation;
 import com.devpulse.auth.entity.ProjectMember;
 import com.devpulse.auth.entity.SystemRole;
 import com.devpulse.auth.entity.User;
+import com.devpulse.auth.exception.ConflictException;
 import com.devpulse.auth.exception.DuplicateEmailException;
 import com.devpulse.auth.exception.ForbiddenException;
 import com.devpulse.auth.exception.InvalidCredentialsException;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -52,6 +56,32 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserMapper userMapper;
     private final ProjectInvitationClaimService invitationClaimService;
+    private final GithubIdentityService githubIdentityService;
+
+    @Autowired
+    public AuthServiceImpl(UserRepository userRepository,
+                           CompanyRepository companyRepository,
+                           ProjectMemberRepository projectMemberRepository,
+                           CompanyMemberRepository companyMemberRepository,
+                           ProjectRepository projectRepository,
+                           PasswordEncoder passwordEncoder,
+                           JwtService jwtService,
+                           AuthenticationManager authenticationManager,
+                           UserMapper userMapper,
+                           ProjectInvitationClaimService invitationClaimService,
+                           GithubIdentityService githubIdentityService) {
+        this.userRepository = userRepository;
+        this.companyRepository = companyRepository;
+        this.projectMemberRepository = projectMemberRepository;
+        this.companyMemberRepository = companyMemberRepository;
+        this.projectRepository = projectRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.authenticationManager = authenticationManager;
+        this.userMapper = userMapper;
+        this.invitationClaimService = invitationClaimService;
+        this.githubIdentityService = githubIdentityService;
+    }
 
     public AuthServiceImpl(UserRepository userRepository,
                            CompanyRepository companyRepository,
@@ -63,16 +93,9 @@ public class AuthServiceImpl implements AuthService {
                            AuthenticationManager authenticationManager,
                            UserMapper userMapper,
                            ProjectInvitationClaimService invitationClaimService) {
-        this.userRepository = userRepository;
-        this.companyRepository = companyRepository;
-        this.projectMemberRepository = projectMemberRepository;
-        this.companyMemberRepository = companyMemberRepository;
-        this.projectRepository = projectRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-        this.authenticationManager = authenticationManager;
-        this.userMapper = userMapper;
-        this.invitationClaimService = invitationClaimService;
+        this(userRepository, companyRepository, projectMemberRepository,
+                companyMemberRepository, projectRepository, passwordEncoder,
+                jwtService, authenticationManager, userMapper, invitationClaimService, null);
     }
 
     @Override
@@ -235,6 +258,116 @@ public class AuthServiceImpl implements AuthService {
         String token = jwtService.generateToken(user);
 
         return userMapper.toAuthResponse(user, token, jwtService.getExpirationSeconds());
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse loginWithGithub(GithubLoginRequest request) {
+        if (request == null || request.getCode() == null || request.getCode().isBlank()) {
+            throw new IllegalArgumentException("Authorization code is required");
+        }
+        if (githubIdentityService == null) {
+            throw new IllegalStateException("GithubIdentityService is not configured");
+        }
+
+        GithubUserInfo ghUser = githubIdentityService.exchangeCodeAndFetchUserInfo(request.getCode());
+        Long githubId = ghUser.id();
+        String githubUsername = ghUser.login();
+        String email = ghUser.email() != null ? ghUser.email().trim().toLowerCase() : null;
+        String fullName = (ghUser.name() != null && !ghUser.name().isBlank())
+                ? ghUser.name().trim()
+                : githubUsername;
+        String avatarUrl = ghUser.avatarUrl();
+
+        // 1. Check if user already exists by github_id
+        User user = userRepository.findFirstByGithubId(githubId).orElse(null);
+
+        if (user != null) {
+            if (avatarUrl != null && !avatarUrl.isBlank() && user.getAvatarUrl() == null) {
+                user.setAvatarUrl(avatarUrl);
+            }
+            if (githubUsername != null && !githubUsername.equalsIgnoreCase(user.getGithubUsername())) {
+                user.setGithubUsername(githubUsername);
+            }
+            if (user.isMustResetPassword()) {
+                user.setMustResetPassword(false);
+            }
+
+            if (request.getInviteToken() != null && !request.getInviteToken().isBlank()) {
+                invitationClaimService.accept(request.getInviteToken(), user);
+                if (user.getCompany() != null) {
+                    recordCompanyMembership(user.getUserId(), user.getCompany().getCompanyId(), SystemRole.MEMBER);
+                }
+            }
+
+            User savedUser = userRepository.save(user);
+            String token = jwtService.generateToken(savedUser);
+            return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+        }
+
+        // 2. Check if user already exists by email
+        if (email != null && !email.isBlank()) {
+            user = userRepository.findByEmailIgnoreCase(email).orElse(null);
+        }
+
+        if (user != null) {
+            if (user.getGithubId() != null && !user.getGithubId().equals(githubId)) {
+                throw new ConflictException(
+                        "An account with this email already exists and is linked to another GitHub account");
+            }
+
+            user.setGithubId(githubId);
+            user.setGithubUsername(githubUsername);
+            if (avatarUrl != null && !avatarUrl.isBlank() && user.getAvatarUrl() == null) {
+                user.setAvatarUrl(avatarUrl);
+            }
+            if (user.isMustResetPassword()) {
+                user.setMustResetPassword(false);
+            }
+
+            if (request.getInviteToken() != null && !request.getInviteToken().isBlank()) {
+                invitationClaimService.accept(request.getInviteToken(), user);
+                if (user.getCompany() != null) {
+                    recordCompanyMembership(user.getUserId(), user.getCompany().getCompanyId(), SystemRole.MEMBER);
+                }
+            }
+
+            User savedUser = userRepository.save(user);
+            String token = jwtService.generateToken(savedUser);
+            return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+        }
+
+        // 3. User does not exist - this is a new GitHub OAuth Sign-Up
+        User newUser = new User();
+        newUser.setEmail(email);
+        newUser.setFullName(fullName);
+        newUser.setPasswordHash(null);
+        newUser.setGithubId(githubId);
+        newUser.setGithubUsername(githubUsername);
+        newUser.setAvatarUrl(avatarUrl);
+        newUser.setAuthProvider("GITHUB");
+        newUser.setSystemRoleEnum(SystemRole.MEMBER);
+        newUser.setCreatedAt(OffsetDateTime.now());
+
+        if (request.getInviteToken() != null && !request.getInviteToken().isBlank()) {
+            ProjectInvitation invitation = invitationClaimService
+                    .requirePendingInvitation(request.getInviteToken(), email);
+            Company company = invitationClaimService.requireInvitedCompany(invitation);
+            newUser.setCompany(company);
+
+            User savedUser = userRepository.save(newUser);
+            invitationClaimService.complete(invitation, savedUser);
+            recordCompanyMembership(savedUser.getUserId(), company.getCompanyId(), SystemRole.MEMBER);
+
+            String token = jwtService.generateToken(savedUser);
+            return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+        } else {
+            newUser.setCompany(null);
+            User savedUser = userRepository.save(newUser);
+
+            String token = jwtService.generateToken(savedUser);
+            return userMapper.toAuthResponse(savedUser, token, jwtService.getExpirationSeconds());
+        }
     }
 
     @Override

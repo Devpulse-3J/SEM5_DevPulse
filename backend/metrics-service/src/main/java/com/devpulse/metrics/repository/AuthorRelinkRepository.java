@@ -56,4 +56,27 @@ public class AuthorRelinkRepository {
                                = CAST(? AS text))
                 """, userId, companyId, githubId);
     }
+
+    /** @return how many commits were attributed */
+    public int relinkCommits(Integer companyId, Integer userId, long githubId) {
+        return jdbcTemplate.update("""
+                UPDATE commits c
+                   SET author_id = ?
+                  FROM repos r
+                 WHERE r.repo_id = c.repo_id
+                   AND c.company_id = ?
+                   AND c.author_id IS NULL
+                   AND EXISTS (
+                        SELECT 1 FROM raw_event_log e
+                         WHERE e.company_id = c.company_id
+                           AND e.provider = 'github'
+                           AND e.event_type = 'push'
+                           AND (
+                                (e.payload->>'sha' = c.commit_sha
+                                 AND e.payload->'author'->>'id' = CAST(? AS text))
+                             OR (e.payload->'head_commit'->>'id' = c.commit_sha
+                                 AND COALESCE(e.payload->'sender'->>'id', e.payload->'head_commit'->'author'->>'id') = CAST(? AS text))
+                           ))
+                """, userId, companyId, githubId, githubId);
+    }
 }

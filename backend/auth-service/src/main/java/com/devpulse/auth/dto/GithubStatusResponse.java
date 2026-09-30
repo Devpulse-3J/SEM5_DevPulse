@@ -19,6 +19,9 @@ public class GithubStatusResponse {
     public Long getGithubUserId() { return githubUserId; }
     public void setGithubUserId(Long githubUserId) { this.githubUserId = githubUserId; }
 
+    public Long getGithubId() { return githubUserId; }
+    public void setGithubId(Long githubId) { this.githubUserId = githubId; }
+
     public String getGithubUsername() { return githubUsername; }
     public void setGithubUsername(String githubUsername) { this.githubUsername = githubUsername; }
 }

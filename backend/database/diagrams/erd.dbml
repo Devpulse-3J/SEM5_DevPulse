@@ -25,16 +25,21 @@ Table companies {
 
 Table users {
   user_id         integer [pk, increment]
-  company_id      integer [not null, ref: > companies.company_id]
+  company_id      integer [ref: > companies.company_id]
   email           varchar(320) [not null, unique]
   full_name       varchar(255) [not null]
-  password_hash   varchar(255) [not null]
+  password_hash   varchar(255) [null]
   system_role     varchar(50) [not null, default: 'member', note: "admin | member | developer | manager"]
-  github_id       bigint
+  github_id       bigint [unique]
+  github_username varchar(255)
   jira_account_id varchar(128)
   avatar_url      varchar(512)
+  auth_provider   varchar(32) [not null, default: 'LOCAL']
   created_at      timestamptz [not null, default: `now()`]
-  Indexes { company_id }
+  Indexes {
+    company_id
+    github_id [unique]
+  }
 }
 
 Table projects {
