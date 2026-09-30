@@ -59,7 +59,14 @@ public class SlackOAuthControllerTest {
         ResponseEntity<List<Map<String, String>>> response = controller.listSlackChannels();
         assertNotNull(response);
         assertEquals(200, response.getStatusCode().value());
-        assertFalse(response.getBody().isEmpty());
-        assertEquals("dev-alerts", response.getBody().get(0).get("name"));
+        assertTrue(response.getBody().isEmpty());
+    }
+
+    @Test
+    public void testGetSlackStatus() {
+        ResponseEntity<Map<String, Object>> response = controller.getSlackStatus();
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(false, response.getBody().get("connected"));
     }
 }
