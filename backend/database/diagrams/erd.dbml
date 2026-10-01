@@ -297,6 +297,7 @@ Table alerts {
   message      text
   triggered_at timestamptz [not null, default: `now()`]
   resolved_at  timestamptz
+  dedup_key    varchar(255) [note: 'unique when set — one alert per real-world event, e.g. deployment-failed:<project>:<sha>']
 }
 
 Table notifications {

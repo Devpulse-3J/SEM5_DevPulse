@@ -38,8 +38,8 @@ public class EmailNotificationService {
         log.info("Sending Email Notification to '{}' with subject '{}'", recipientEmail, subject);
 
         if (mailSender == null) {
-            log.info("JavaMailSender not configured. Simulating successful email delivery to '{}'", recipientEmail);
-            return true;
+            log.warn("JavaMailSender not configured; email to '{}' was NOT sent", recipientEmail);
+            return false;
         }
 
         try {

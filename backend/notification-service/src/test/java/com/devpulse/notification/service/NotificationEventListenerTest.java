@@ -1,6 +1,7 @@
 package com.devpulse.notification.service;
 
 import com.devpulse.contracts.events.AlertPrHighRiskEvent;
+import com.devpulse.contracts.events.DeploymentCreatedEvent;
 import com.devpulse.contracts.events.PrOpenedEvent;
 import com.devpulse.notification.email.EmailNotificationService;
 import com.devpulse.notification.entity.Alert;
@@ -48,8 +49,22 @@ class NotificationEventListenerTest {
     @Mock
     private WebhookNotificationService webhookNotificationService;
 
+    @Mock
+    private DeploymentFailureNotifier deploymentFailureNotifier;
+
     @InjectMocks
     private NotificationEventListener listener;
+
+    @Test
+    void routesDeploymentEventsToTheFailureNotifier() {
+        DeploymentCreatedEvent event = new DeploymentCreatedEvent(
+                UUID.randomUUID().toString(), 15, 1296161496, Instant.now(),
+                900, "a1b2c3d", "production", "failure", Instant.now());
+
+        listener.handleIncomingEvent(event);
+
+        verify(deploymentFailureNotifier).handle(event);
+    }
 
     @Test
     void testHandleHighRiskPrAlertEventWithRuleEvaluation() {
