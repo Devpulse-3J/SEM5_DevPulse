@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
  * active HIGH_RISK_PR alert rule.
  *
  * <p>The event carries only the pull request id, so the project is looked up
- * here. A pull request is re-scored every time its repository is synced; the
+ * here. Only open pull requests are alerted on. A pull request is re-scored every time its repository is synced; the
  * dedup key is the pull request, so it is alerted on once.
  */
 @Service
@@ -52,6 +52,11 @@ public class HighRiskPrNotifier {
             return;
         }
         ProjectPullRequest pr = resolved.get();
+        if (!pr.isOpen()) {
+            // A repository sync re-scores merged and closed pull requests too; nobody can act on those.
+            log.info("High risk PR {} is {}, not open; no alert raised", pr.prId(), pr.state());
+            return;
+        }
 
         List<AlertRule> rules = alertRuleRepository.findByCompanyIdAndIsActiveTrue(event.getCompanyId()).stream()
                 .filter(rule -> PrAlertDispatcher.isOfType(rule, RULE_TYPES))

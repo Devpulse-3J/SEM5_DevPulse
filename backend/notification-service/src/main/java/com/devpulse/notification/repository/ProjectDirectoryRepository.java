@@ -23,8 +23,12 @@ public class ProjectDirectoryRepository {
     }
 
     /** A pull request together with the project its repository is linked to. */
-    public record ProjectPullRequest(Integer prId, Integer number, String title, String url, Instant createdAt,
+    public record ProjectPullRequest(Integer prId, Integer number, String title, String url, String state, Instant createdAt,
                                      Integer projectId, String projectName, String repoFullName) {
+
+        public boolean isOpen() {
+            return "open".equalsIgnoreCase(state);
+        }
 
         /** The stored URL, or the one GitHub would use when the event did not carry it. */
         public String link() {
@@ -33,7 +37,7 @@ public class ProjectDirectoryRepository {
     }
 
     private static final String PULL_REQUEST_SELECT = """
-            SELECT pr.pr_id, pr.github_pr_number, pr.title, pr.url, pr.created_at,
+            SELECT pr.pr_id, pr.github_pr_number, pr.title, pr.url, pr.state, pr.created_at,
                    p.project_id, p.project_name, r.full_name
             FROM pull_requests pr
             JOIN repos r ON r.repo_id = pr.repo_id AND r.company_id = pr.company_id
@@ -43,7 +47,7 @@ public class ProjectDirectoryRepository {
     private static final RowMapper<ProjectPullRequest> PULL_REQUEST_MAPPER = (rs, rowNum) -> {
         Timestamp createdAt = rs.getTimestamp("created_at");
         return new ProjectPullRequest(rs.getInt("pr_id"), rs.getInt("github_pr_number"), rs.getString("title"),
-                rs.getString("url"), createdAt == null ? null : createdAt.toInstant(),
+                rs.getString("url"), rs.getString("state"), createdAt == null ? null : createdAt.toInstant(),
                 rs.getInt("project_id"), rs.getString("project_name"), rs.getString("full_name"));
     };
 

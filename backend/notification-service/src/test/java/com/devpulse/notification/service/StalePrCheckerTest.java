@@ -68,7 +68,7 @@ class StalePrCheckerTest {
     }
 
     private static ProjectPullRequest pr(int prId, int number, int projectId, long hoursOpen) {
-        return new ProjectPullRequest(prId, number, "PR " + number, null, NOW.minus(Duration.ofHours(hoursOpen)),
+        return new ProjectPullRequest(prId, number, "PR " + number, null, "open", NOW.minus(Duration.ofHours(hoursOpen)),
                 projectId, projectId == BACKEND ? "Dev_pulse_Backend" : "frontend",
                 projectId == BACKEND ? "Devpulse-3J/SEM5_DevPulse" : "Devpulse-3J/SEM5_DevPulse_Frontend");
     }
