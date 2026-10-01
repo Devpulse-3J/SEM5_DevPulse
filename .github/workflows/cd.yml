@@ -39,6 +39,7 @@ concurrency:
 permissions:
   contents: read
   packages: write   # required to push images to GHCR
+  deployments: write # required to create GitHub deployment events
 
 jobs:
   # ============================================================
@@ -169,6 +170,14 @@ jobs:
                                # Settings → Environments → production
 
     steps:
+      - name: Create GitHub Deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          environment: 'production'
+          initial-status: 'in_progress'
+
       # The compose services use `build:` (no `image:`), so the instance builds
       # from its own checkout — `docker compose pull` would do nothing. Images
       # are built one service at a time to keep memory use down, then
@@ -210,3 +219,20 @@ jobs:
             exit 1
         env:
           DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
+
+      - name: Update Deployment Status (Success)
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          state: 'success'
+          environment-url: 'http://${{ secrets.DEPLOY_HOST }}'
+
+      - name: Update Deployment Status (Failure)
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          state: 'failure'
