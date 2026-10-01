@@ -132,6 +132,18 @@ def test_high_risk_publishes_an_alert_with_the_database_pr_id(factory, scored):
     assert b'"prId": 7' in channel.published[0]["body"]
 
 
+def test_alert_names_its_java_event_class_so_notification_service_can_read_it(factory, scored):
+    # Regression: without the __TypeId__ header Spring cannot deserialise the
+    # message into its abstract BaseEvent and drops every alert unread.
+    _add_pr(factory, pr_id=7, github_pr_id=GITHUB_ID)
+    channel = FakeChannel()
+
+    pr_events._handle_pr_opened(channel, _event())
+
+    headers = channel.published[0]["properties"].headers
+    assert headers == {"__TypeId__": "com.devpulse.contracts.events.AlertPrHighRiskEvent"}
+
+
 def test_waits_for_metrics_service_to_insert_the_pr(factory, scored):
     channel = FakeChannel(
         on_sleep=lambda n: _add_pr(factory, pr_id=7, github_pr_id=GITHUB_ID) if n == 1 else None
