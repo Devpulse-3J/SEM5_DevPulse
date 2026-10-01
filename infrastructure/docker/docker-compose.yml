@@ -1,7 +1,7 @@
-# DevPulse — local stack.
+# DevPulse â€” local stack.
 #
 # Database architecture: ONE shared PostgreSQL database. It is an infrastructure
-# component, NOT a microservice — every backend service connects to the same
+# component, NOT a microservice â€” every backend service connects to the same
 # database.
 #
 # >>> The database is now hosted on SUPABASE, not in this compose file. <<<
@@ -10,7 +10,7 @@
 # matching `depends_on` entries and the `volumes:` block at the bottom.
 #
 # This does NOT make backend/database/ obsolete. Those Flyway migrations are
-# still the single source of truth for the schema — they now run against
+# still the single source of truth for the schema â€” they now run against
 # Supabase instead of a local container:
 #
 #   docker run --rm -v "$PWD/backend/database/migrations:/flyway/sql" \
@@ -18,7 +18,7 @@
 #     -user="$SUPABASE_DB_USER" -password="$SUPABASE_DB_PASSWORD" \
 #     -baselineOnMigrate=true migrate
 #
-# Secrets come from a .env file next to this compose file — copy .env.example to
+# Secrets come from a .env file next to this compose file â€” copy .env.example to
 # .env and fill it in. Never commit .env.
 #
 # Bring up the remaining local infra with:
@@ -28,7 +28,7 @@ name: devpulse
 
 # ---- shared snippets -------------------------------------------------------
 # Credentials for the shared database. SUPABASE_* wins when set in .env, which
-# is how this project actually runs — the local `postgres` service below is
+# is how this project actually runs â€” the local `postgres` service below is
 # commented out, so the devpulse fallbacks only apply if someone turns it back on.
 x-postgres-env: &postgres-env
   POSTGRES_USER: ${SUPABASE_USER:-devpulse}
@@ -139,7 +139,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-devpulse-default-secret-key-change-me-in-production-min-32-chars!!}
       REDIS_URL: redis://redis:6379
       # Route targets. application.yml defaults these to localhost, which is correct
-      # for a native run but points the gateway at ITSELF inside a container — every
+      # for a native run but points the gateway at ITSELF inside a container â€” every
       # proxied call then fails with "Connection refused: localhost/127.0.0.1:<port>".
       AUTH_SERVICE_URI: http://auth-service:8081
       INTEGRATION_SERVICE_URI: http://integration-service:8082
@@ -267,7 +267,7 @@ services:
     environment:
       <<: [ *postgres-env, *rabbitmq-url ]
       APP_PORT: 8000
-      # SQLAlchemy DSN (not JDBC) — analytics-service is Python. Same shared DB.
+      # SQLAlchemy DSN (not JDBC) â€” analytics-service is Python. Same shared DB.
       # It reads/writes only pr_predictions; it does NOT run migrations.
       POSTGRES_URL: postgresql://postgres:5432/${POSTGRES_DB:-devpulse}
       ANALYTICS_MODEL_PATH: ./app/artifacts/pr_risk_model.joblib
