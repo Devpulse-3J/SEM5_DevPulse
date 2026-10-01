@@ -132,7 +132,7 @@ public class SlackNotificationService {
         // Header Block
         Map<String, Object> headerBlock = new HashMap<>();
         headerBlock.put("type", "header");
-        headerBlock.put("text", Map.of("type", "plain_text", "text", "🚨 DevPulse High Risk Alert", "emoji", true));
+        headerBlock.put("text", Map.of("type", "plain_text", "text", "🚨 DevPulse Alert", "emoji", true));
         blocks.add(headerBlock);
 
         // Section Block

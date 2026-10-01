@@ -29,6 +29,10 @@ EXCHANGE = "devpulse.events"
 QUEUE = "analytics.pr_events"
 ROUTING_KEYS = ["pr.opened"]
 ALERT_ROUTING_KEY = "alert.pr_high_risk"
+# The Java consumers deserialise into an abstract BaseEvent and pick the
+# concrete class from this header. Without it Spring's converter cannot build
+# the event and the message is dropped before any listener code runs.
+ALERT_TYPE_ID = "com.devpulse.contracts.events.AlertPrHighRiskEvent"
 
 # A background thread has no supervisor: an uncaught exception just ends it
 # silently (Python logs it via threading.excepthook and moves on), which is
@@ -95,7 +99,9 @@ def _handle_pr_opened(channel, payload: dict) -> None:
                 }
             ).encode(),
             properties=pika.BasicProperties(
-                content_type="application/json", delivery_mode=2
+                content_type="application/json",
+                delivery_mode=2,
+                headers={"__TypeId__": ALERT_TYPE_ID},
             ),
         )
 

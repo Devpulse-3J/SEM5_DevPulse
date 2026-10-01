@@ -9,6 +9,7 @@ import java.util.Optional;
 
 @Repository
 public interface AlertRuleRepository extends JpaRepository<AlertRule, Integer> {
+    List<AlertRule> findByIsActiveTrue();
     List<AlertRule> findByCompanyIdAndIsActiveTrue(Integer companyId);
     List<AlertRule> findByCompanyIdAndProjectIdAndIsActiveTrue(Integer companyId, Integer projectId);
 
