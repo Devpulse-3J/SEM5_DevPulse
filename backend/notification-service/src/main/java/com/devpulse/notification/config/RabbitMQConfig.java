@@ -41,6 +41,11 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Binding bindingDeploymentEvents(Queue notificationQueue, TopicExchange devpulseExchange) {
+        return BindingBuilder.bind(notificationQueue).to(devpulseExchange).with("deployment.#");
+    }
+
+    @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
     }

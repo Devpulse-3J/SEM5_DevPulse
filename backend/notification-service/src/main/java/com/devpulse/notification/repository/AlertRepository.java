@@ -10,4 +10,5 @@ import java.util.List;
 public interface AlertRepository extends JpaRepository<Alert, Integer> {
     List<Alert> findByCompanyIdOrderByTriggeredAtDesc(Integer companyId);
     List<Alert> findByCompanyIdAndResolvedAtIsNullOrderByTriggeredAtDesc(Integer companyId);
+    boolean existsByDedupKey(String dedupKey);
 }

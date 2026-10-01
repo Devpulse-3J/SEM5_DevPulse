@@ -30,6 +30,7 @@ class RabbitMQConfigTest {
 
         assertEquals("alert.#", alertBinding.getRoutingKey());
         assertEquals("pr.#", prBinding.getRoutingKey());
+        assertEquals("deployment.#", config.bindingDeploymentEvents(queue, exchange).getRoutingKey());
 
         assertInstanceOf(Jackson2JsonMessageConverter.class, config.jsonMessageConverter());
     }

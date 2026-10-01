@@ -2,6 +2,7 @@ package com.devpulse.notification.service;
 
 import com.devpulse.contracts.events.AlertPrHighRiskEvent;
 import com.devpulse.contracts.events.BaseEvent;
+import com.devpulse.contracts.events.DeploymentCreatedEvent;
 import com.devpulse.contracts.events.PrOpenedEvent;
 import com.devpulse.notification.email.EmailNotificationService;
 import com.devpulse.notification.entity.Alert;
@@ -33,19 +34,22 @@ public class NotificationEventListener {
     private final SlackNotificationService slackNotificationService;
     private final EmailNotificationService emailNotificationService;
     private final WebhookNotificationService webhookNotificationService;
+    private final DeploymentFailureNotifier deploymentFailureNotifier;
 
     public NotificationEventListener(AlertRepository alertRepository,
                                      AlertRuleRepository alertRuleRepository,
                                      NotificationRepository notificationRepository,
                                      SlackNotificationService slackNotificationService,
                                      EmailNotificationService emailNotificationService,
-                                     WebhookNotificationService webhookNotificationService) {
+                                     WebhookNotificationService webhookNotificationService,
+                                     DeploymentFailureNotifier deploymentFailureNotifier) {
         this.alertRepository = alertRepository;
         this.alertRuleRepository = alertRuleRepository;
         this.notificationRepository = notificationRepository;
         this.slackNotificationService = slackNotificationService;
         this.emailNotificationService = emailNotificationService;
         this.webhookNotificationService = webhookNotificationService;
+        this.deploymentFailureNotifier = deploymentFailureNotifier;
     }
 
     @RabbitListener(queues = "${devpulse.rabbitmq.queue.notification:notification.events}")
@@ -57,6 +61,8 @@ public class NotificationEventListener {
             processHighRiskPrAlert(highRiskEvent);
         } else if (event instanceof PrOpenedEvent prOpenedEvent) {
             log.info("Logged PR opened event for PR #{} ({})", prOpenedEvent.getGithubPrNumber(), prOpenedEvent.getTitle());
+        } else if (event instanceof DeploymentCreatedEvent deploymentEvent) {
+            deploymentFailureNotifier.handle(deploymentEvent);
         }
     }
 

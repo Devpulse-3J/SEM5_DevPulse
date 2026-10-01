@@ -39,6 +39,10 @@ public class Alert {
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 
+    /** Unique when set: a second alert for the same real-world event is rejected by the database. */
+    @Column(name = "dedup_key", length = 255)
+    private String dedupKey;
+
     public Alert() {}
 
     public Alert(Integer companyId, Integer projectId, Integer ruleId, String entityType, Integer entityId, String severity, String message) {
@@ -81,4 +85,7 @@ public class Alert {
 
     public Instant getResolvedAt() { return resolvedAt; }
     public void setResolvedAt(Instant resolvedAt) { this.resolvedAt = resolvedAt; }
+
+    public String getDedupKey() { return dedupKey; }
+    public void setDedupKey(String dedupKey) { this.dedupKey = dedupKey; }
 }
