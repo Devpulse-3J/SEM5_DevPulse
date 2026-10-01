@@ -743,3 +743,5 @@ Per-service specs are aggregated through the **api-gateway**, so consumers can b
 - `<Team member>` — `<role / responsibility>`
 
 DevPulse — semester project. Built as a demonstration of event-driven microservices, DORA analytics, and applied ML for engineering productivity.
+
+<!-- Now ready for the final one -->
