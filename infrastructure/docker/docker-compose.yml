@@ -146,6 +146,8 @@ services:
       METRICS_SERVICE_URI: http://metrics-service:8083
       NOTIFICATION_SERVICE_URI: http://notification-service:8084
       ANALYTICS_SERVICE_URI: http://analytics-service:8000
+      RATE_LIMIT_REPLENISH: ${RATE_LIMIT_REPLENISH:-5000}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10000}
     ports:
       - "8080:8080"
 
