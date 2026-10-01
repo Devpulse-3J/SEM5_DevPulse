@@ -8,7 +8,7 @@ are the codes actually returned.
 ---
 
 ## 1. Verdict: can the frontend connect?
-
+EG.KFDKGKLNGFNLKNGKDLNFGKTR
 **Yes — for authentication.** Register, login, `/me`, JWT enforcement, CORS and rate limiting are all
 working through the gateway on `http://localhost:8080`. Kalhara can wire the login screen today.
 
