@@ -54,9 +54,7 @@ class HighRiskPrNotifierTest {
         notifier = new HighRiskPrNotifier(alertRuleRepository, projectDirectory, new PrAlertDispatcher(
                 projectDirectory, alertRepository, notificationRepository, slackService, emailService));
 
-        when(projectDirectory.findPullRequest(COMPANY, PR_ID)).thenReturn(Optional.of(new ProjectPullRequest(
-                PR_ID, 63, "Rework login", null, Instant.parse("2026-10-01T05:00:00Z"),
-                PROJECT, "Dev_pulse_Backend", "Devpulse-3J/SEM5_DevPulse")));
+        pullRequestIs("open");
         when(projectDirectory.findManagers(PROJECT)).thenReturn(List.of(new Manager(40, "manager@example.com", "Mana Ger")));
         when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
             Alert alert = invocation.getArgument(0);
@@ -65,6 +63,12 @@ class HighRiskPrNotifierTest {
         });
         when(slackService.sendSlackNotification(anyString(), anyString())).thenReturn(true);
         when(emailService.sendEmailNotification(anyString(), anyString(), anyString())).thenReturn(true);
+    }
+
+    private void pullRequestIs(String state) {
+        when(projectDirectory.findPullRequest(COMPANY, PR_ID)).thenReturn(Optional.of(new ProjectPullRequest(
+                PR_ID, 63, "Rework login", null, state, Instant.parse("2026-10-01T05:00:00Z"),
+                PROJECT, "Dev_pulse_Backend", "Devpulse-3J/SEM5_DevPulse")));
     }
 
     private static AlertRule rule(int id, Integer projectId, String type, String channel) {
@@ -195,6 +199,18 @@ class HighRiskPrNotifierTest {
             assertEquals("failed", notification.getStatus());
             assertNull(notification.getSentAt());
         });
+    }
+
+    @Test
+    void raisesNothingForAMergedOrClosedPullRequestThatASyncReScored() {
+        activeRules(rule(5, PROJECT, "HIGH_RISK_PR", "#risk"));
+
+        for (String state : new String[] {"merged", "closed"}) {
+            pullRequestIs(state);
+            notifier.handle(event());
+        }
+
+        verifyNoInteractions(alertRepository, slackService, emailService, notificationRepository);
     }
 
     @Test
