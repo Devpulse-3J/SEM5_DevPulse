@@ -1,4 +1,4 @@
-# DevPulse
+#(OdinEye) DevPulse
 
 **An automated developer productivity and code quality insights dashboard for distributed engineering teams.** DevPulse ingests real-time events from GitHub, Jira, and Slack, computes recognised DORA metrics, predicts stale and high-risk pull requests using machine learning, and surfaces everything through a multi-tenant web dashboard so managers can answer "which PRs are stuck, who is overloaded, and why are releases slow?" without stitching together four disconnected tools.
 
