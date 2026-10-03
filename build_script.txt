@@ -1,0 +1,229 @@
+===============================================================================
+
+                    O D I N E Y E   ( D e v P u l s e )
+                         Build  &  Run  Guide
+
+          Backend: Spring Boot services + FastAPI analytics + gateway
+          (The Next.js frontend lives in a separate repository.)
+
+===============================================================================
+
+Written for : Anyone who needs to build the backend and run the system
+              locally - with Docker, or natively.
+
+DATABASE NOTE: This project uses ONE shared PostgreSQL database (Supabase in
+              the cloud). In the current compose, the local postgres and
+              flyway containers are COMMENTED OUT, so services connect to
+              Supabase via the docker-compose.supabase.yml override. The schema
+              is owned by Flyway migrations in backend/database/migrations/ -
+              services never migrate the DB (spring.flyway.enabled=false,
+              ddl-auto=validate).
+
+
+-------------------------------------------------------------------------------
+  CONTENTS
+-------------------------------------------------------------------------------
+   1.  Prerequisites
+   2.  One-time environment setup
+   3.  Run with Docker (recommended)
+   4.  Build the backend (without running)
+   5.  Run natively (services on your machine)
+   6.  Ports & verifying it's up
+   7.  Database & migrations
+   8.  Troubleshooting
+
+
+===============================================================================
+  1.  PREREQUISITES
+===============================================================================
+
+   TOOL                        NEEDED FOR
+   --------------------------  -------------------------------------------------
+   Docker + Docker Compose     Running the stack (and infra Redis/RabbitMQ).
+   Java 17 + Maven             Building/running the Java services natively.
+                               NOTE: no ./mvnw is committed - use `mvn` from
+                               the backend/ directory.
+   Python 3.11                 Running the analytics service natively.
+   Node.js                     Only for the frontend (separate repo).
+
+
+===============================================================================
+  2.  ONE-TIME ENVIRONMENT SETUP
+===============================================================================
+
+  Services read secrets from gitignored .env.local files (native) and the
+  Docker .env (compose). Only *.example templates are committed.
+
+    # From the repo root.
+
+    # 1) Create each service's .env.local from its committed template:
+    for f in backend/*/.env.local.example; do cp "$f" "${f%.example}"; done
+
+    # 2) Create the Docker secrets file from its template, then edit it:
+    cp infrastructure/docker/.env.example infrastructure/docker/.env
+    #   -> open infrastructure/docker/.env and fill in the real values
+    #      (DB connection, RabbitMQ, SMTP, GitHub/Jira/Slack, JWT_SECRET, ...)
+
+  SECRETS STAY OUT OF GIT. Only edit real values in the gitignored
+  .env / .env.local files. Do not commit them.
+
+
+===============================================================================
+  3.  RUN WITH DOCKER (RECOMMENDED)
+===============================================================================
+
+  The stack is defined by TWO compose files, always used together - the base
+  file plus the Supabase override (the override must come SECOND):
+
+    cd infrastructure/docker
+
+    # Build and start the whole stack (services + Redis + RabbitMQ):
+    docker compose --env-file .env \
+      -f docker-compose.yml \
+      -f docker-compose.supabase.yml \
+      up --build
+
+  Run it detached (background) with -d:
+
+    docker compose --env-file .env -f docker-compose.yml \
+      -f docker-compose.supabase.yml up --build -d
+
+  Useful follow-ups:
+
+    # See what's running:
+    docker compose -f docker-compose.yml -f docker-compose.supabase.yml ps
+
+    # Tail logs for one service:
+    docker compose -f docker-compose.yml -f docker-compose.supabase.yml \
+      logs -f notification-service
+
+    # Stop everything:
+    docker compose -f docker-compose.yml -f docker-compose.supabase.yml down
+
+  JUST THE INFRASTRUCTURE (Redis + RabbitMQ)
+  ---------------------------------------------------------------------------
+  If you only want the infra up (e.g. to run services natively, section 5):
+
+    cd infrastructure/docker
+    docker compose --env-file .env -f docker-compose.yml up -d redis rabbitmq
+
+  NOTE: postgres and flyway containers are commented out - the database is
+        Supabase. Do not expect a local postgres container to start.
+
+
+===============================================================================
+  4.  BUILD THE BACKEND (WITHOUT RUNNING)
+===============================================================================
+
+  The backend is a Maven MULTI-MODULE project (parent backend/pom.xml).
+  Always build from backend/.
+
+    cd backend
+
+    mvn package                     # build & test everything
+    mvn -pl <service> -am package   # build one service + its dependencies
+    mvn -pl <service> test          # run one service's tests
+
+    # Examples:
+    mvn -pl notification-service -am package
+    mvn -pl api-gateway test
+
+  GOTCHA: `mvn -pl <service> test -Dtest=ClassName` can fail in the reactor
+          (shared-contracts). Run the whole module suite instead.
+
+  To get a Maven wrapper (optional, since none is committed):
+    cd backend && mvn -N wrapper:wrapper
+
+
+===============================================================================
+  5.  RUN NATIVELY (SERVICES ON YOUR MACHINE)
+===============================================================================
+
+  5a. START INFRA IN DOCKER
+  ---------------------------------------------------------------------------
+    cd infrastructure/docker
+    docker compose --env-file .env -f docker-compose.yml up -d redis rabbitmq
+
+  5b. RUN A JAVA SERVICE
+  ---------------------------------------------------------------------------
+  A native service reads application.yml, which defaults to localhost for
+  Redis/RabbitMQ - so the Docker infra above is enough. For the database and
+  other secrets, export the values yourself (nothing auto-loads .env.local):
+
+    cd backend
+    # export the env this service needs first (DB URL/user/password,
+    # JWT_SECRET, etc.)
+    mvn -pl api-gateway spring-boot:run
+
+  5c. RUN THE ANALYTICS SERVICE (PYTHON)
+  ---------------------------------------------------------------------------
+    cd backend/analytics-service
+    python -m venv .venv && source .venv/bin/activate
+    pip install -r requirements.txt
+    uvicorn app.main:app --reload
+
+
+===============================================================================
+  6.  PORTS & VERIFYING IT'S UP
+===============================================================================
+
+   SERVICE               PORT          HEALTH / DOCS
+   --------------------  ------------  -----------------------------------------
+   api-gateway           8080          /actuator/health  (public entry)
+   auth-service          8081          /actuator/health
+   integration-service   8082          /actuator/health
+   metrics-service       8083          /actuator/health
+   notification-service  8084          /actuator/health
+   analytics-service     8000          /docs  (FastAPI Swagger)
+   RabbitMQ              5672 / 15672  management UI at http://localhost:15672
+   Redis                 6379          -
+
+  All HTTP traffic goes through the GATEWAY on 8080; the individual service
+  ports are for local debugging only.
+
+    # Quick health check through the gateway:
+    curl http://localhost:8080/actuator/health
+
+
+===============================================================================
+  7.  DATABASE & MIGRATIONS
+===============================================================================
+
+   -  The schema lives ONLY in backend/database/migrations/ as Flyway files
+      (V<n>__description.sql).
+   -  Services must NOT migrate the DB: spring.flyway.enabled=false,
+      ddl-auto=validate.
+   -  Against Supabase, migrations are applied deliberately by the DB owner -
+      NOT automatically by a service on startup.
+   -  Never edit or renumber a migration that has already run; add a new,
+      higher-numbered file.
+
+
+===============================================================================
+  8.  TROUBLESHOOTING
+===============================================================================
+
+  "./mvnw: not found"
+    There is no Maven wrapper committed. Use `mvn` from backend/, or generate
+    the wrapper (section 4).
+
+  A service can't reach Redis/RabbitMQ when run natively
+    Make sure the infra containers are up (section 5a); native services
+    default to localhost.
+
+  A container has stale behaviour after an env change
+    Container env only refreshes on RECREATE, not restart. Re-run `up -d`
+    (or `up --build`) rather than `restart`.
+
+  Everything starts but can't reach the database
+    Check the DB values in infrastructure/docker/.env; the Supabase override
+    expects them to be set. Do not `source` a .env whose values contain `&`
+    in the shell; let compose read it with --env-file.
+
+  Postgres container didn't start
+    Expected. Postgres/Flyway are commented out; the DB is Supabase.
+
+
+===============================================================================
+                 End of build & run guide  -  OdinEye (DevPulse)
+===============================================================================
