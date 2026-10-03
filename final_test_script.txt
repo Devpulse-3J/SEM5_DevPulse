@@ -1,0 +1,239 @@
+===============================================================================
+
+                      O D I N E Y E   ( D e v P u l s e )
+                           Final  Test  Script
+
+               System: Spring Boot microservices + FastAPI
+                       analytics + Next.js frontend
+                     Live URL: https://odineye.cse23.org
+
+===============================================================================
+
+Written for : The team and the evaluator - how to test OdinEye before the
+              final demo, covering automated tests and manual end-to-end
+              checks.
+
+How to read : Each test case has an ID, Preconditions, Steps, and an Expected
+              result. Record Pass/Fail and notes. Run the automated tests
+              first (Part B), then the manual end-to-end tests (Part C).
+
+
+-------------------------------------------------------------------------------
+  CONTENTS
+-------------------------------------------------------------------------------
+   A.  Test environment
+   B.  Automated tests          (AT-01 .. AT-11)
+   C.  Manual end-to-end tests  (E2E-01 .. E2E-26)
+   D.  Security tests           (SEC-01 .. SEC-05)
+   E.  Non-functional checks    (NFR-01 .. NFR-04)
+
+
+===============================================================================
+  PART A - TEST ENVIRONMENT
+===============================================================================
+
+  A1. What you need
+  ---------------------------------------------------------------------------
+    -  Repositories checked out (backend + frontend).
+    -  Java 17 + Maven. NOTE: no ./mvnw wrapper is committed - run Maven from
+       the backend/ directory.
+    -  Python 3.11 + virtualenv (analytics tests).
+    -  Node.js (frontend tests).
+    -  For manual tests: the live site, a test email inbox, and access to a
+       GitHub org, a Jira site, and a Slack workspace.
+
+  A2. Test data / accounts
+  ---------------------------------------------------------------------------
+    -  A throwaway email for the admin (company) registration.
+    -  One or two throwaway emails for invited members.
+    -  A GitHub repository you can open a pull request on.
+
+    IMPORTANT: Manual tests write real data. Use a TEST company, not a
+               production one. Do not run destructive DB operations against
+               the shared database.
+
+
+===============================================================================
+  PART B - AUTOMATED TESTS
+===============================================================================
+
+  B1. BACKEND - JAVA (per service)   Run from the backend/ directory.
+  ---------------------------------------------------------------------------
+   ID     SERVICE              COMMAND                                   EXPECT
+   -----  -------------------  ----------------------------------------  ------
+   AT-01  api-gateway          cd backend && mvn -pl api-gateway    -am  PASS
+                               test
+   AT-02  auth-service         cd backend && mvn -pl auth-service   -am  PASS
+                               test
+   AT-03  integration-service  cd backend && mvn -pl integration-       PASS
+                               service -am test
+   AT-04  metrics-service      cd backend && mvn -pl metrics-service -am PASS
+                               test
+   AT-05  notification-service cd backend && mvn -pl notification-       PASS
+                               service -am test
+   AT-06  everything           cd backend && mvn test                   PASS
+
+   Covers: AT-01 JWT validation, header stripping, rate-limit keying, error
+           contract.  AT-05 stale-PR, high-risk, deployment-failure notifiers.
+
+   GOTCHA: `mvn -pl <service> test -Dtest=ClassName` can fail in the
+           multi-module reactor (shared-contracts). Run the whole module suite.
+
+   READING RESULTS: each module prints "Tests run: N, Failures: 0, Errors: 0".
+           Any non-zero Failures/Errors = FAIL; see target/surefire-reports/.
+
+  B2. ANALYTICS - PYTHON (ML service)
+  ---------------------------------------------------------------------------
+    cd backend/analytics-service
+    python -m venv .venv && source .venv/bin/activate
+    pip install -r requirements.txt
+    pytest
+
+   ID     AREA                                                          EXPECT
+   -----  ------------------------------------------------------------  ------
+   AT-07  Feature extraction (test_feature_extractor.py)               PASS
+   AT-08  PR-events consumer (test_pr_events_consumer.py) - incl. the  PASS
+          __TypeId__ header on the high-risk alert and reconnect/backoff.
+
+  B3. FRONTEND - NEXT.JS
+  ---------------------------------------------------------------------------
+    cd <frontend-repo>
+    npm install
+    npm run test     (vitest)
+    npm run lint     (eslint)
+    npm run build    (production build)
+
+   ID     CHECK            EXPECT
+   -----  ---------------  ------------------------------------------------
+   AT-09  npm run test     All vitest suites pass.
+   AT-10  npm run lint     No lint errors.
+   AT-11  npm run build    Build completes, no type/build errors.
+
+
+===============================================================================
+  PART C - MANUAL END-TO-END TESTS   (do in order; later depend on earlier)
+===============================================================================
+
+  C1. REGISTRATION & COMPANY
+  ---------------------------------------------------------------------------
+   E2E-01  Open /register, choose "Register as a Company", fill fields,
+           submit.
+           EXPECT: Company created; you are its admin; admin dashboard loads.
+   E2E-02  Register again as "Individual Account".
+           EXPECT: Account created with NO company workspace (modes differ).
+
+  C2. LOGIN
+  ---------------------------------------------------------------------------
+   E2E-03  Log out, open Admin login, sign in.
+           EXPECT: Admin dashboard (Overview).
+   E2E-04  Admin login with a wrong password.
+           EXPECT: Rejected with a clear error; no access.
+
+  C3. PROJECTS
+  ---------------------------------------------------------------------------
+   E2E-05  Projects -> + Create Project; enter name + Jira key; Create.
+           EXPECT: Project appears with GitHub/Members/Created columns.
+   E2E-06  Delete a project; confirm.
+           EXPECT: Confirmation shown first; then project removed.
+
+  C4. MEMBERS & INVITATIONS
+  ---------------------------------------------------------------------------
+   E2E-07  Open project -> Invite Member; test email; role Developer; Send.
+           EXPECT: Invitation email sent.
+   E2E-08  Open the email; click the link.
+           EXPECT: Register page opens, email pre-filled and locked.
+   E2E-09  Set full name + password; submit.
+           EXPECT: Member joins the admin's company as Developer on that
+           project.
+   E2E-10  Members -> pending requests; Approve one.
+           EXPECT: Person becomes approved; Reject removes the request.
+
+  C5. ROLES & PERMISSIONS
+  ---------------------------------------------------------------------------
+   E2E-11  Open project; change a member's role to Manager.
+           EXPECT: Role updates; member gets the manager view/alerts.
+   E2E-12  Same person: Manager on project A, Developer on project B.
+           EXPECT: Each project reflects its own role (per-project roles).
+   E2E-13  Log in as a Developer; view a project dashboard.
+           EXPECT: Developer dashboards only; no admin-only pages.
+
+  C6. INTEGRATIONS (company level)
+  ---------------------------------------------------------------------------
+   E2E-14  Integrations -> GitHub; authorize the App; select repos; approve.
+           EXPECT: Returns to OdinEye; installation shows connected.
+   E2E-15  Integrations -> Jira; Connect; sign in to Atlassian; approve.
+           EXPECT: Jira shows connected.
+   E2E-16  Integrations -> Slack; Connect; authorize; Send test event.
+           EXPECT: Test message arrives in the Slack channel.
+
+  C7. CONNECT INTEGRATION TO A PROJECT
+  ---------------------------------------------------------------------------
+   E2E-17  Open project -> GitHub connection; pick a repo; confirm.
+           EXPECT: Repo linked; historical sync runs; repo shows on project.
+   E2E-18  Try to link the same repo to another project/company.
+           EXPECT: Blocked with a clear "already connected" message.
+   E2E-19  Confirm the project's Jira key is set.
+           EXPECT: Jira issues for that key associate with the project.
+
+  C8. DATA & METRICS
+  ---------------------------------------------------------------------------
+   E2E-20  Open the project's DORA Metrics.
+           EXPECT: Deployment frequency, lead time, change failure rate, MTTR.
+   E2E-21  Open a new PR on the linked repo; wait; open PR Risk & Insights.
+           EXPECT: The new PR appears with a risk score/category.
+   E2E-22  Open Team & Workload as the assignee.
+           EXPECT: Assigned Jira tasks show for the matching developer.
+
+  C9. ALERTS
+  ---------------------------------------------------------------------------
+   E2E-23  Create a STALE_PR rule (e.g. 24h) with a Slack channel.
+           EXPECT: Rule saved and listed.
+   E2E-24  Have an open PR older than the threshold; wait <=15 min.
+           EXPECT: One alert to the rule's Slack channel + email to managers;
+           a PR is alerted only once.
+   E2E-25  With a HIGH_RISK_PR rule, open a PR that scores high; wait.
+           EXPECT: High-risk alert posted/emailed once for that PR.
+   E2E-26  On a project with a manager, trigger a failed deployment.
+           EXPECT: Managers receive the "Deployment failed" email; duplicates
+           suppressed.
+
+
+===============================================================================
+  PART D - SECURITY TESTS
+===============================================================================
+
+   SEC-01  Call a protected API through the gateway with NO token
+           (e.g. GET /api/metrics/dora).
+           EXPECT: 401 with JSON error shape {status, error, path}.
+   SEC-02  Call it with a malformed/expired token.
+           EXPECT: 401.
+   SEC-03  Send a forged X-User-Id header plus a valid token.
+           EXPECT: Gateway strips the forged header and sets it from the token
+           (covered by JwtAuthenticationFilterHeaderTest).
+   SEC-04  Hit /api/auth/login rapidly many times.
+           EXPECT: Requests rate-limited after the burst (per-IP).
+   SEC-05  Confirm backend ports (8081-8084, 8000) are NOT reachable from the
+           public internet - only the gateway (8080).
+           EXPECT: Direct access refused/filtered; all traffic via gateway.
+
+   NOTE: SEC-01..04 are also covered by the automated gateway suite (AT-01).
+         SEC-05 is an infrastructure / security-group check, done manually.
+
+
+===============================================================================
+  PART E - NON-FUNCTIONAL CHECKS
+===============================================================================
+
+   NFR-01  Reliability: send the same GitHub webhook twice.
+           EXPECT: Only one deployment/alert recorded (idempotent).
+   NFR-02  Loose coupling: one PR event consumed by metrics AND analytics.
+           EXPECT: Both act on one event; no direct service-to-service call.
+   NFR-03  Observability: each service's /actuator/health.
+           EXPECT: Returns UP.
+   NFR-04  Deployability: merge to main triggers CI/CD.
+           EXPECT: New version live after the pipeline.
+
+
+===============================================================================
+                End of test script  -  OdinEye (DevPulse)
+===============================================================================

@@ -1,0 +1,375 @@
+===============================================================================
+
+                           O D I N E Y E
+                          User  Manual
+
+        Developer productivity & delivery analytics platform
+               Access at:  https://odineye.cse23.org
+
+===============================================================================
+
+Written for : People setting up and using OdinEye for the first time
+              (admins and team members).
+
+What it does: OdinEye connects to GitHub, Jira, and Slack. It tracks DORA
+              metrics, scores pull requests for risk, and alerts your team
+              when something needs attention.
+
+
+-------------------------------------------------------------------------------
+  TABLE OF CONTENTS
+-------------------------------------------------------------------------------
+
+   1.  Getting started
+   2.  Create your company (admin registration)
+   3.  Logging in
+   4.  The admin dashboard at a glance
+   5.  Create a project
+   6.  Invite members and accept by email
+   7.  Roles and permissions
+   8.  Set up integrations (GitHub, Jira, Slack)
+   9.  Connect an integration to a project
+  10.  What happens next (the data you get)
+  11.  Alert rules
+  12.  Settings
+  13.  Troubleshooting & FAQ
+  14.  Glossary
+
+
+===============================================================================
+  1.  GETTING STARTED
+===============================================================================
+
+  What you need before you begin:
+
+    -  A web browser and the URL:  https://odineye.cse23.org
+    -  An email address you can check (the first account becomes the
+       company admin).
+    -  Admin access to the GitHub organisation / repositories you want to
+       track.
+    -  An Atlassian (Jira) account, if you use Jira.
+    -  Permission to add an app to your Slack workspace, if you use Slack.
+
+  The big picture - set-up happens in this order:
+
+    1.  Register your COMPANY        ->  you become the ADMIN.
+    2.  Create a PROJECT             ->  one project = one product/codebase.
+    3.  INVITE your team             ->  they accept through an email link.
+    4.  Connect GITHUB, JIRA, SLACK  ->  once, at the company level.
+    5.  Connect a REPO + JIRA board  ->  to each project.
+    6.  OdinEye collects data, computes metrics, and sends alerts.
+
+
+===============================================================================
+  2.  CREATE YOUR COMPANY (ADMIN REGISTRATION)
+===============================================================================
+
+  The first person to sign up creates the company and automatically becomes
+  its ADMIN.
+
+    1.  Go to  https://odineye.cse23.org  and open  Register.
+
+    2.  At the top, choose  "Register as a Company".
+        (The other option, "Individual Account", is for personal use and
+         does NOT create a company workspace.)
+
+    3.  Fill in:
+          -  Full name      - your name.
+          -  Email          - your work email; this becomes the admin login.
+          -  Password       - choose a strong password.
+          -  Company name   - your organisation's name (creates the company).
+
+    4.  Click  Register.
+
+  You now have a company workspace, and your account is its admin.
+  Everything else in this manual is done from that admin account.
+
+  NOTE:  There is only one company admin role at the company level. Other
+         people you invite become regular members, and you give them
+         Manager or Developer roles on each project (see section 7).
+
+
+===============================================================================
+  3.  LOGGING IN
+===============================================================================
+
+    -  ADMINS       : use the "Admin login" page; sign in with your admin
+                      email and password.
+    -  TEAM MEMBERS : use the normal "Login" page with the email and password
+                      they set when they accepted their invitation.
+
+  Which is which:
+    -  Admin login  -> the ADMIN dashboard (projects, members, integrations,
+                       settings).
+    -  Member login -> the DEVELOPER / MANAGER dashboard (their work, metrics,
+                       alerts).
+
+
+===============================================================================
+  4.  THE ADMIN DASHBOARD AT A GLANCE
+===============================================================================
+
+  After logging in as admin you land on the Overview. The left sidebar has
+  five areas:
+
+    +---------------+----------------------------------------------------------+
+    |  AREA         |  WHAT IT'S FOR                                           |
+    +---------------+----------------------------------------------------------+
+    |  Overview     |  Control panel: shortcuts and status flags (e.g. a      |
+    |               |  project with no GitHub repo yet).                      |
+    |  Projects     |  Create, open, and delete projects.                     |
+    |  Members      |  See everyone, manage roles, approve join requests.     |
+    |  Integrations |  Connect GitHub, Jira, and Slack.                       |
+    |  Settings     |  Company configuration and sensitive controls.          |
+    +---------------+----------------------------------------------------------+
+
+
+===============================================================================
+  5.  CREATE A PROJECT
+===============================================================================
+
+  A PROJECT represents one product or codebase. Metrics, repositories,
+  members, and alerts are all organised under a project.
+
+    1.  In the sidebar, click  Projects.
+    2.  Click  "+ Create Project".
+    3.  Enter:
+          -  Project name       - e.g. "Payments Service".
+          -  Jira project key   - (optional) e.g. "PAY". Add this if the team
+                                  uses Jira, so OdinEye knows which Jira board
+                                  belongs to this project.
+    4.  Click  Create.
+
+  The project appears in your list with columns for its GitHub link,
+  Members, and Created date.
+
+  DELETING A PROJECT:
+    On the Projects list, use the Delete action on a row. You'll be asked to
+    confirm, because deletion is permanent.
+
+
+===============================================================================
+  6.  INVITE MEMBERS AND ACCEPT BY EMAIL
+===============================================================================
+
+  6a.  SEND AN INVITATION
+  ---------------------------------------------------------------------------
+    1.  Open a project from  Projects.
+    2.  In the Members section, click  "Invite Member".
+    3.  Enter the person's email address.
+    4.  Choose their role for this project - Developer or Manager
+        (see section 7).
+    5.  Click  "Send Invite".
+
+    OdinEye emails the person an invitation link.
+
+  6b.  THE MEMBER ACCEPTS BY EMAIL
+  ---------------------------------------------------------------------------
+    1.  The invited person opens the email and clicks the invitation link.
+    2.  The link opens the Register page with their email already filled in
+        and locked (so they join YOUR company, not a new one).
+    3.  They set their full name and password and submit.
+    4.  They're now a member of your company, with the role you chose on
+        that project.
+
+  6c.  APPROVING JOIN REQUESTS
+  ---------------------------------------------------------------------------
+    If someone requests to join your company on their own, their request
+    appears under  Members -> pending join requests. As admin you Approve or
+    Reject each one. Nobody enters the company without your approval.
+
+
+===============================================================================
+  7.  ROLES AND PERMISSIONS
+===============================================================================
+
+  OdinEye has three roles. The key idea: MANAGER and DEVELOPER are set PER
+  PROJECT, so the same person can be a Manager on one project and a Developer
+  on another.
+
+    +-------------+--------------+-------------------------------------------+
+    |  ROLE       |  SCOPE       |  CAN DO                                   |
+    +-------------+--------------+-------------------------------------------+
+    |  Admin      |  Company     |  Everything: projects, members,          |
+    |             |              |  integrations, settings. One per company.|
+    |  Manager    |  Per project |  Full metrics & insights, receives the   |
+    |             |              |  project's alerts, manages the team.     |
+    |  Developer  |  Per project |  Own work, the project's dashboards,     |
+    |             |              |  assigned tasks.                         |
+    +-------------+--------------+-------------------------------------------+
+
+  To change someone's role: open the project, find them in the Members
+  section, and use the role selector. You can also remove a member there.
+
+
+===============================================================================
+  8.  SET UP INTEGRATIONS (GITHUB, JIRA, SLACK)
+===============================================================================
+
+  Integrations are connected ONCE, at the company level, by the admin.
+  Go to  Integrations  in the sidebar - you'll see three cards.
+
+  8a.  GITHUB
+  ---------------------------------------------------------------------------
+    1.  Open the GitHub integration.
+    2.  Click to authorize the GitHub App (one click - you do NOT paste any
+        personal access token).
+    3.  In GitHub, choose the organisation and select the repositories
+        OdinEye may access, then approve.
+    4.  You're returned to OdinEye, which confirms the installation.
+
+    This lets OdinEye read your repositories, receive webhooks for pull
+    requests and deployments, and sync historical data.
+
+  8b.  JIRA
+  ---------------------------------------------------------------------------
+    1.  Open the Jira integration.
+    2.  Click  Connect  and sign in to Atlassian (OAuth) to authorise OdinEye.
+    3.  Approve access to your Jira site.
+    4.  Back in OdinEye, your Jira workspace shows as connected. OdinEye can
+        now pull in issues and track workload.
+
+  8c.  SLACK
+  ---------------------------------------------------------------------------
+    1.  Open the Slack integration.
+    2.  Click  Connect  and authorise the app for your Slack workspace.
+    3.  Once connected, use "Send test event" (if shown) to confirm a message
+        lands in your Slack channel.
+
+    Slack is where OdinEye delivers alerts (high-risk PRs, stale PRs, failed
+    deployments).
+
+
+===============================================================================
+  9.  CONNECT AN INTEGRATION TO A PROJECT
+===============================================================================
+
+  Connecting GitHub at the company level is step one. Step two is linking a
+  specific REPOSITORY (and Jira board) to a specific PROJECT.
+
+  9a.  LINK A GITHUB REPOSITORY TO A PROJECT
+  ---------------------------------------------------------------------------
+    1.  Open the project from  Projects.
+    2.  Go to the  GitHub connection  section.
+    3.  Choose the repository to link from the list of repositories OdinEye
+        can access through the GitHub App.
+    4.  Confirm the link. OdinEye then syncs historical data and begins
+        tracking new pull requests and deployments for that project.
+
+    NOTE: A repository can belong to only one project in one company. If it's
+          already linked elsewhere, OdinEye will tell you.
+
+  9b.  LINK JIRA TO A PROJECT
+  ---------------------------------------------------------------------------
+    Set the project's Jira project key (e.g. "PAY") when you create the
+    project, or on the project's detail page. OdinEye uses it to match Jira
+    issues to the right project.
+
+
+===============================================================================
+  10.  WHAT HAPPENS NEXT (THE DATA YOU GET)
+===============================================================================
+
+  Once a project has a connected repository, OdinEye works on its own:
+
+    -  DORA METRICS      - deployment frequency, lead time for changes,
+                           change failure rate, and time to restore.
+    -  PULL REQUEST RISK - a machine-learning model scores each new pull
+                           request; risky ones are surfaced early.
+    -  TEAM & WORKLOAD   - who's working on what, from GitHub + Jira.
+    -  ALERTS            - delivered to Slack and by email (see section 11).
+
+  Managers and developers see this through their own dashboards after they
+  log in.
+
+
+===============================================================================
+  11.  ALERT RULES
+===============================================================================
+
+  Alert rules decide when OdinEye warns your team. A Manager or Admin creates
+  them for a project.
+
+  Common rule types:
+
+    -  STALE PR           - a pull request open longer than a threshold
+                            (e.g. 24 hours) is reported.
+    -  HIGH-RISK PR       - a pull request the model scores as high risk is
+                            reported.
+    -  FAILED DEPLOYMENT  - the project's managers are emailed automatically
+                            when a deployment fails (no rule needed).
+
+  When a rule triggers, OdinEye records the alert, posts to the rule's Slack
+  channel, and emails the project's managers. Each real problem is alerted on
+  once.
+
+
+===============================================================================
+  12.  SETTINGS
+===============================================================================
+
+  The Settings area holds company-level configuration. It also contains the
+  most sensitive controls - for example "Delete Organisation" - kept behind a
+  confirmation. Use these with care; deleting the organisation cannot be
+  undone.
+
+
+===============================================================================
+  13.  TROUBLESHOOTING & FAQ
+===============================================================================
+
+  Q: I registered but didn't get a company workspace.
+  A: You probably chose "Individual Account". Register again choosing
+     "Register as a Company".
+
+  Q: An invited member says the email link doesn't pre-fill their address.
+  A: Have them open the link from the invitation email directly, not by
+     navigating to the register page manually. The invite link carries their
+     email and the join token.
+
+  Q: The GitHub repository dropdown is empty when linking it to a project.
+  A: The GitHub App either isn't installed yet, or wasn't granted access to
+     that repository. Re-open the GitHub integration, authorise the App, and
+     make sure the repository is selected during installation.
+
+  Q: "This repository is already connected to another company/project."
+  A: A repository can be linked to only one project. Remove it from the other
+     project first, or pick a different repository.
+
+  Q: No DORA metrics are showing for a project.
+  A: Check that the project has a linked repository (section 9) and that there
+     has been recent activity. Historical sync runs when you first link
+     the repo.
+
+  Q: Jira tasks aren't appearing for a developer.
+  A: A Jira task only shows for a developer if their Jira account email
+     matches their OdinEye email, and the project has a Jira project key set.
+
+  Q: Alerts aren't arriving in Slack.
+  A: Confirm Slack is connected (section 8c) and that the alert rule has a
+     valid Slack channel. Use "Send test event" to verify delivery.
+
+
+===============================================================================
+  14.  GLOSSARY
+===============================================================================
+
+    Company        - your organisation's workspace. Created by the first
+                     (admin) registration.
+    Project        - one product or codebase; the unit metrics and members
+                     are organised under.
+    Admin          - company-level owner; sets up everything. One per company.
+    Manager /      - per-project roles granted to members.
+      Developer
+    Integration    - a connection to an external tool (GitHub, Jira, Slack).
+    DORA metrics   - four industry-standard measures of software delivery
+                     performance.
+    PR risk score  - a machine-learning estimate of how risky a pull request
+                     is.
+    Alert rule     - a condition that, when met, notifies the team via Slack
+                     and email.
+
+
+===============================================================================
+                   End of manual  -  OdinEye
+===============================================================================
