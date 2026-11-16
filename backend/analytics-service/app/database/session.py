@@ -2,7 +2,7 @@
 
 analytics-service READS pull_requests / users / repos and WRITES only
 pr_predictions. It never migrates the schema — Flyway in backend/database owns
-that (see CLAUDE.md). There is deliberately no Alembic here.
+that. There is deliberately no Alembic here.
 
 The driver is psycopg2 (sync). Feature extraction is a handful of indexed
 queries, so FastAPI's threadpool — which is what a plain `def` endpoint gets —
